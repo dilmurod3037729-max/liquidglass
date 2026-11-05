@@ -6,7 +6,8 @@ const DEFAULTS = {
   maxShapes: 32,                         // bir vaqtda (GPU uniform chegarasi: 32)
   minSize: [28, 24],                     // bundan kichik elementlar o'tkazib yuboriladi (px)
   params: {},                            // glass.params ga beriladi (bevel, thick, ...)
-  labelContrast: true,                   // yozuv rangi shisha ostidagi fon yorug'ligiga moslashadi
+  labelContrast: true,
+  tint: true,                            // asl tugma rangi shisha rangiga o'tadi                   // yozuv rangi shisha ostidagi fon yorug'ligiga moslashadi
   zIndex: 2147483000,
 };
 
@@ -40,6 +41,25 @@ export class DomGlass {
 
   get isDirty() { return this.dirty && !this.busy; }
 
+  // Asl tugmaning fon rangi shisha rangiga aylanadi (qizil "Tozalash" qizil shisha, faol bo'lim moviy shisha va hokazo).
+  // Shaffof yoki oq fon = tiniq shisha.
+  #tintOf(cs) {
+    if (!this.o.tint) return [0, 0, 0, 0];
+    const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/);
+    if (!m) return [0, 0, 0, 0];
+    const [r, g, b, a = 1] = m[1].split(',').map(Number);
+    if (a < 0.15 || (r > 225 && g > 225 && b > 225)) {
+      // och yoki shaffof fon: rang yozuvdan olinadi (qizil yozuv -> qizil shisha), kulrang/qora yozuv -> tiniq shisha
+      const t = cs.color.match(/rgba?\(([^)]+)\)/);
+      if (!t) return [0, 0, 0, 0];
+      const [tr, tg, tb] = t[1].split(',').map(Number), mx = Math.max(tr, tg, tb), mn = Math.min(tr, tg, tb);
+      const lum = (0.299 * tr + 0.587 * tg + 0.114 * tb) / 255;   // to'q (qora-ko'k) yozuv rang emas, shunchaki matn
+      if (mx === 0 || lum < 0.28 || (mx - mn) / mx < 0.55) return [0, 0, 0, 0];
+      return [tr / 255, tg / 255, tb / 255, 0.3];
+    }
+    return [r / 255, g / 255, b / 255, Math.min(Math.max(a * 0.85, 0.2), 0.7)];
+  }
+
   #collect() {
     const { selector, exclude, maxShapes, minSize } = this.o, out = [];
     for (const el of document.querySelectorAll(selector)) {
@@ -49,7 +69,7 @@ export class DomGlass {
       if (r.width < minSize[0] || r.height < minSize[1] || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
-      out.push({ el, r, rad: Math.min(parseFloat(cs.borderTopLeftRadius) || 12, Math.min(r.width, r.height) / 2) });
+      out.push({ el, r, rad: Math.min(parseFloat(cs.borderTopLeftRadius) || 12, Math.min(r.width, r.height) / 2), tint: this.#tintOf(cs) });
       if (out.length >= maxShapes) break;
     }
     return out;
@@ -102,17 +122,19 @@ export class DomGlass {
     const lumAt = (r) => { pc.drawImage(source, r.left * sx, r.top * sy, r.width * sx, r.height * sy, 0, 0, 1, 1); const d = pc.getImageData(0, 0, 1, 1).data; return (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255; };
 
     this.rects = [];
-    this.items.forEach(({ el, r, rad }) => {
+    this.items.forEach(({ el, r, rad, tint }) => {
       const lab = el.cloneNode(true);
       lab.setAttribute('data-lg', '1'); lab.removeAttribute('id');
-      const dark = o.labelContrast ? lumAt(r) > 0.55 : null;
+      const tl = 0.299 * tint[0] + 0.587 * tint[1] + 0.114 * tint[2];
+      // rangli shishada yozuv rangi shisha rangiga, aks holda fon yorug'ligiga qarab
+      const dark = o.labelContrast ? (tint[3] > 0.35 ? tl > 0.6 : lumAt(r) > 0.55) : null;
       const col = dark === null ? '' : `color:${dark ? '#0f172a' : '#fff'} !important;text-shadow:${dark ? 'none' : '0 1px 4px rgba(0,0,0,.5)'};`;
       // asl fon/soya/chekinish olib tashlanadi (margin: aks holda yozuv siljiydi), pointer-events yo'q (bosish asl tugmaga o'tadi)
       lab.style.cssText += `;background:none !important;box-shadow:none !important;border-color:transparent !important;backdrop-filter:none !important;pointer-events:none !important;opacity:1 !important;margin:0 !important;inset:auto;z-index:${o.zIndex + 1};${col}`;
       if (dark !== null) lab.querySelectorAll('*').forEach((c) => c.style.setProperty('color', dark ? '#0f172a' : '#fff', 'important'));
       document.body.appendChild(lab);
       this.labels.push(lab);
-      glass.add({ w: r.width, h: r.height, radius: rad, draggable: false }, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, lab);
+      glass.add({ w: r.width, h: r.height, radius: rad, draggable: false, tint }, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, lab);
       this.rects.push(r);
     });
 

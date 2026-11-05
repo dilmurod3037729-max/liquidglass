@@ -2,3 +2,4 @@ node_modules/
 build/
 *.log
 *.png
+!web/docs/*.png

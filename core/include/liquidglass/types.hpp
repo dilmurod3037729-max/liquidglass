@@ -9,6 +9,7 @@ struct Vec2 { float x = 0, y = 0; };
 struct ShapeDesc {
     float w = 100, h = 60, radius = 30;   // mantiqiy piksel
     bool  draggable = true;                // false: doim oldingi qatlamda (panel, tugma)
+    float tint[4] = {0, 0, 0, 0};          // rgb (0..1) + kuch: rangli shisha, 0 = tiniq
 };
 
 // Shisha materiali (web demo bilan bir xil ma'no va standart qiymatlar)
@@ -28,6 +29,7 @@ struct PassUniforms {
     float rad[kMaxShapes];
     float k[kMaxShapes];          // dum bilan birlashish radiusi
     float act[kMaxShapes];        // 1 = shu o'tishda chiziladi
+    float tint[kMaxShapes * 4];   // rgb + kuch
     float merge, flip, shadowK, shadowOff, specMul, thickMul, extraLod;
 };
 

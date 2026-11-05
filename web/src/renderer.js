@@ -1,6 +1,6 @@
 import { VERTEX, FRAGMENT } from './shader.js';
 
-const UNIFORMS = ['uBg', 'uRes', 'uRect', 'uTail', 'uRad', 'uK', 'uAct', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
+const UNIFORMS = ['uBg', 'uRes', 'uRect', 'uTail', 'uRad', 'uK', 'uAct', 'uTint', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
   'uSpecMul', 'uThickMul', 'uExtraLod', 'uLight', 'uIOR', 'uThick', 'uBevel', 'uDisp', 'uBlur', 'uSpec', 'uAbs'];
 
 function compile(gl, type, src) {
@@ -75,7 +75,7 @@ export class Renderer {
 
     const pass = (u) => {
       gl.uniform4fv(loc.uRect, u.rect); gl.uniform4fv(loc.uTail, u.tail);
-      gl.uniform1fv(loc.uRad, u.rad); gl.uniform1fv(loc.uK, u.k); gl.uniform1fv(loc.uAct, u.act);
+      gl.uniform1fv(loc.uRad, u.rad); gl.uniform1fv(loc.uK, u.k); gl.uniform1fv(loc.uAct, u.act); gl.uniform4fv(loc.uTint, u.tint);
       gl.uniform1f(loc.uMerge, u.merge); gl.uniform1f(loc.uFlip, u.flip);
       gl.uniform1f(loc.uShadowK, u.shadowK); gl.uniform1f(loc.uShadowOff, u.shadowOff);
       gl.uniform1f(loc.uSpecMul, u.specMul); gl.uniform1f(loc.uThickMul, u.thickMul); gl.uniform1f(loc.uExtraLod, u.extraLod);

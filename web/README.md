@@ -1,5 +1,8 @@
 # liquidglass-web
 
+![qattiq oyna](docs/glass.png)
+![suv rejimi](docs/water.png)
+
 Fizikaga asoslangan "suyuq shisha" (WebGL2), bog'liqliksiz ES modul. Ikki rejim:
 
 - **`glass`** (asosiy): toza qattiq oyna. Markazi tiniq, sinish faqat ingichka chetda. Snell sinishi, dispersiya, Fresnel,

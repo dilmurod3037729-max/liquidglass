@@ -10,6 +10,7 @@ uniform vec4  uTail[N];
 uniform float uRad[N];
 uniform float uK[N];
 uniform float uAct[N];
+uniform vec4  uTint[N];   // rgb + kuch (0 = tiniq shisha)
 uniform float uDpr, uMerge, uFlip, uShadowK, uShadowOff, uSpecMul, uThickMul, uExtraLod;
 uniform vec2  uLight;
 uniform float uIOR, uThick, uBevel, uDisp, uBlur, uSpec, uAbs;
@@ -23,6 +24,7 @@ float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; r
 
 // Eng yaqin shaklning kichik yarim o'lchami (sdAll yozadi): chet kengligi shundan oshmasligi uchun
 float gMin = 1e5;
+vec4  gTint = vec4(0.0);
 // Bitta tomchi: BITTA jism. Bosh va dum nuqtasi orasidagi farq (cho'zilish) jismni harakat o'qi bo'ylab uzaytiradi,
 // yuzani saqlash uchun enini toraytiradi va orqa tomonini uchiga qarab ingichkalashtiradi (tomchi shakli).
 // uK[i] = maksimal cho'zilish (piksel). Nusxa/ikkinchi jism YO'Q.
@@ -46,13 +48,15 @@ float sdDrop(vec2 p, int i){
 // Qatlamdagi barcha tomchilarning umumiy maydoni: yaqinlashganda suyuqdek qo'shiladi.
 float sdAll(vec2 p){
   float d = 1e5, bm = 1e5;
+  vec4 bt = vec4(0.0);
   for (int i = 0; i < N; i++){
     if (uAct[i] < 0.5) continue;
     float di = sdDrop(p, i);
-    if (di < d) bm = min(uRect[i].z, uRect[i].w);
+    if (di < d) { bm = min(uRect[i].z, uRect[i].w); bt = uTint[i]; }
     d = smin(d, di, max(uMerge, 0.5));
   }
   gMin = bm;
+  gTint = bt;
   return d;
 }
 vec3 bgAt(vec2 px, float lod){
@@ -78,6 +82,7 @@ void main(){
   float lum = clamp(dot(bgAt(px, 6.0), vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
   float d = sdAll(px);
   float halfMin = gMin;
+  vec4 tint = gTint;
 
   // Soya va kaustika: sahnaning o'ziga (tagidagi tugma/matnga ham) tushadi. Uzoqda hisoblanmaydi.
   if (d > 0.0 && d < (90.0 + uShadowOff * 2.0) * uDpr){
@@ -124,6 +129,8 @@ void main(){
     tr *= exp(-uAbs * path * vec3(0.0042, 0.0036, 0.0030) * (1.0 - 0.7 * lum));   // deyarli neytral: sovuq ko'k tus yo'q
     tr = mix(tr, tr * vec3(0.98, 0.99, 1.02), 0.6);
     tr *= mix(1.0, 0.93, lum);
+    // Rangli shisha: rang qo'shiladi, lekin orqadagi tafsilot (yorug'lik) saqlanadi
+    tr = mix(tr, tint.rgb * (0.5 + 0.5 * dot(tr, vec3(0.3333))), tint.a);
 
     float cosT = clamp(Nn.z, 0.0, 1.0);
     float F = 0.04 + 0.96 * pow(1.0 - cosT, 5.0);

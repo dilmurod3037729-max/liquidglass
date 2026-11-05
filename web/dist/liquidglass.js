@@ -3,7 +3,7 @@ const __lg = {};
 {
 // AVTOMATIK HOSIL QILINGAN: scripts/sync-shader.mjs. Qo'lda tahrirlamang — core/shaders/liquidglass.frag ni o'zgartiring.
 const VERTEX = "#version 300 es\nvoid main(){\n  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n}";
-const FRAGMENT = "#version 300 es\nprecision highp float;\n#define N 32   // LG_MAX_SHAPES bilan bir xil bo'lishi shart\nuniform sampler2D uBg;\nuniform vec2  uRes;\nuniform vec4  uRect[N];\nuniform vec4  uTail[N];\nuniform float uRad[N];\nuniform float uK[N];\nuniform float uAct[N];\nuniform float uDpr, uMerge, uFlip, uShadowK, uShadowOff, uSpecMul, uThickMul, uExtraLod;\nuniform vec2  uLight;\nuniform float uIOR, uThick, uBevel, uDisp, uBlur, uSpec, uAbs;\nout vec4 outColor;\n\nfloat sdRR(vec2 p, vec2 b, float r){\n  vec2 q = abs(p) - b + r;\n  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;\n}\nfloat smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }\n\n// Eng yaqin shaklning kichik yarim o'lchami (sdAll yozadi): chet kengligi shundan oshmasligi uchun\nfloat gMin = 1e5;\n// Bitta tomchi: BITTA jism. Bosh va dum nuqtasi orasidagi farq (cho'zilish) jismni harakat o'qi bo'ylab uzaytiradi,\n// yuzani saqlash uchun enini toraytiradi va orqa tomonini uchiga qarab ingichkalashtiradi (tomchi shakli).\n// uK[i] = maksimal cho'zilish (piksel). Nusxa/ikkinchi jism YO'Q.\nfloat sdDrop(vec2 p, int i){\n  vec4 r = uRect[i];\n  vec2 d = r.xy - uTail[i].xy;\n  float len = length(d);\n  float m = clamp(len / max(uK[i], 1.0), 0.0, 1.0);\n  vec2 u = len > 1e-3 ? d / len : vec2(1.0, 0.0);\n  vec2 q = p - (r.xy - u * (0.30 * len));\n  float a = dot(q, u), b = dot(q, vec2(-u.y, u.x));\n  float hl = max(abs(u.x) * r.z + abs(u.y) * r.w, 1.0);\n  float sS = 1.0 + 0.45 * m;\n  float rear = pow(clamp(-a / (hl * 1.2), 0.0, 1.0), 1.6);\n  float taper = 1.0 + 1.8 * m * rear;\n  float a2 = a / sS, b2 = b * sqrt(sS) * taper;\n  vec2 p2 = vec2(a2 * u.x - b2 * u.y, a2 * u.y + b2 * u.x);\n  float rr = mix(min(uRad[i], min(r.z, r.w)), min(r.z, r.w), clamp(m * 1.2, 0.0, 1.0));   // cho'zilganda to'liq yumaloq (kapsula)\n  return sdRR(p2, r.zw, rr) / (1.0 + 0.7 * 1.8 * m * rear);\n}\n// Qatlamdagi barcha tomchilarning umumiy maydoni: yaqinlashganda suyuqdek qo'shiladi.\nfloat sdAll(vec2 p){\n  float d = 1e5, bm = 1e5;\n  for (int i = 0; i < N; i++){\n    if (uAct[i] < 0.5) continue;\n    float di = sdDrop(p, i);\n    if (di < d) bm = min(uRect[i].z, uRect[i].w);\n    d = smin(d, di, max(uMerge, 0.5));\n  }\n  gMin = bm;\n  return d;\n}\nvec3 bgAt(vec2 px, float lod){\n  vec2 uv = clamp(px / uRes, vec2(0.001), vec2(0.999));\n  if (uFlip > 0.5) uv.y = 1.0 - uv.y;\n  return textureLod(uBg, uv, lod).rgb;\n}\nvec2 refractOffset(float ior, vec3 Nn, float t, float dist, out float tir){\n  vec3 R = refract(vec3(0.0, 0.0, -1.0), Nn, 1.0 / ior);\n  vec2 inner = R.xy / max(-R.z, 0.08) * t;\n  float s = ior * length(R.xy);\n  tir = step(0.985, s);\n  s = min(s, 0.985);\n  vec3 O = vec3(R.xy * ior, -sqrt(1.0 - s * s));\n  vec2 outer = O.xy / (-O.z) * dist;\n  return inner + outer;\n}\n\nvoid main(){\n  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);\n  vec3 col = bgAt(px, 0.0);\n  // Fon yorug'ligi (0 = qorong'i, 1 = oq): shisha qorong'i va yorug' fonda turlicha ko'rinishi uchun\n  float lum = clamp(dot(bgAt(px, 6.0), vec3(0.299, 0.587, 0.114)), 0.0, 1.0);\n  float d = sdAll(px);\n  float halfMin = gMin;\n\n  // Soya va kaustika: sahnaning o'ziga (tagidagi tugma/matnga ham) tushadi. Uzoqda hisoblanmaydi.\n  if (d > 0.0 && d < (90.0 + uShadowOff * 2.0) * uDpr){\n    float ds = sdAll(px - vec2(0.0, uShadowOff * uDpr));\n    float sh = exp(-max(ds, 0.0) / ((10.0 + uShadowOff * 0.5) * uDpr)) * uShadowK * mix(1.0, 0.25, lum);\n    float dc = sdAll(px - vec2(0.0, uShadowOff * 1.9 * uDpr)) + 7.0 * uDpr;\n    float caus = exp(-abs(dc) / (26.0 * uDpr)) * 0.2;\n    col *= 1.0 - sh;\n    col += vec3(0.38, 0.72, 1.0) * caus * (0.35 + sh) * (1.0 - 0.7 * lum);\n  }\n\n  if (d < 1.5 * uDpr){\n    // Chet kengligi jismning yarmidan oshmaydi: markaz DOIM tiniq (linza emas, oyna) qoladi\n    float zR = min(uBevel * uDpr, halfMin * 0.5);\n    float depth = max(-d, 0.0);\n    float e = 1.0;\n    vec2 g = vec2(sdAll(px + vec2(e, 0.0)) - sdAll(px - vec2(e, 0.0)),\n                  sdAll(px + vec2(0.0, e)) - sdAll(px - vec2(0.0, e)));\n    g = normalize(g + 1e-6);\n\n    float dd = clamp(depth, 0.0, zR);\n    float h = sqrt(max(dd * (2.0 * zR - dd), 0.0));\n    float dh = dd >= zR ? 0.0 : min((zR - dd) / sqrt(max(dd * (2.0 * zR - dd), 1.0)), 9.0);\n    vec3 Nn = normalize(vec3(g * dh, 1.0));\n\n    float th = uThick * uThickMul;\n    float t = (0.25 * zR + h) * th / max(zR, 1.0) * uDpr;\n    float dist = 1.15 * th * uDpr;\n\n    float tirR, tirG, tirB;\n    vec2 oR = refractOffset(uIOR - uDisp, Nn, t, dist, tirR);\n    vec2 oG = refractOffset(uIOR,         Nn, t, dist, tirG);\n    vec2 oB = refractOffset(uIOR + uDisp, Nn, t, dist, tirB);\n\n    float lod = uBlur + uExtraLod + (h / max(zR, 1.0)) * uBlur * 0.6;\n    float k = (0.6 + lod) * uDpr;\n    vec2 pr = px + oR, pg = px + oG, pb = px + oB;\n    vec3 tr = vec3(\n      (bgAt(pr, lod).r * 2.0 + bgAt(pr + vec2(k, 0.0), lod).r + bgAt(pr - vec2(k, 0.0), lod).r + bgAt(pr + vec2(0.0, k), lod).r + bgAt(pr - vec2(0.0, k), lod).r) / 6.0,\n      (bgAt(pg, lod).g * 2.0 + bgAt(pg + vec2(k, 0.0), lod).g + bgAt(pg - vec2(k, 0.0), lod).g + bgAt(pg + vec2(0.0, k), lod).g + bgAt(pg - vec2(0.0, k), lod).g) / 6.0,\n      (bgAt(pb, lod).b * 2.0 + bgAt(pb + vec2(k, 0.0), lod).b + bgAt(pb - vec2(k, 0.0), lod).b + bgAt(pb + vec2(0.0, k), lod).b + bgAt(pb - vec2(0.0, k), lod).b) / 6.0);\n\n    float path = t / max(abs(refract(vec3(0.0, 0.0, -1.0), Nn, 1.0 / uIOR).z), 0.1) / uDpr;\n    tr *= exp(-uAbs * path * vec3(0.0042, 0.0036, 0.0030) * (1.0 - 0.7 * lum));   // deyarli neytral: sovuq ko'k tus yo'q\n    tr = mix(tr, tr * vec3(0.98, 0.99, 1.02), 0.6);\n    tr *= mix(1.0, 0.93, lum);\n\n    float cosT = clamp(Nn.z, 0.0, 1.0);\n    float F = 0.04 + 0.96 * pow(1.0 - cosT, 5.0);\n    vec3 env = mix(vec3(0.05, 0.08, 0.14), vec3(0.78, 0.9, 1.0), clamp(Nn.y * -0.5 + 0.5, 0.0, 1.0));\n    env += vec3(0.10, 0.06, 0.16) * clamp(Nn.x * 0.5 + 0.5, 0.0, 1.0);\n    vec3 refl = env * F * 1.55 * mix(1.0, 0.4, lum);\n\n    float tir = max(max(tirR, tirG), tirB);\n    vec3 tirGlow = vec3(0.75, 0.9, 1.0) * pow(1.0 - cosT, 3.0) * 0.6 * (0.4 + 0.6 * tir) * mix(1.0, 0.35, lum);\n\n    // Yorug'lik kursorga ergashadi (uLight: -1..1)\n    vec3 V = vec3(0.0, 0.0, 1.0);\n    vec3 L1 = normalize(vec3(-0.55 + uLight.x * 0.5, -0.65 + uLight.y * 0.5, 0.75));\n    vec3 L2 = normalize(vec3( 0.60 - uLight.x * 0.3,  0.55 - uLight.y * 0.3, 0.55));\n    float s1 = pow(max(dot(Nn, normalize(L1 + V)), 0.0), 160.0);\n    float s2 = pow(max(dot(Nn, normalize(L2 + V)), 0.0), 110.0) * 0.5;\n    vec3 spec = vec3(1.0) * (s1 + s2) * uSpec * uSpecMul * 1.3;\n\n    vec3 glass = tr * (1.0 - F * 0.9) + refl + tirGlow + spec;\n\n    float edge = smoothstep(2.0 * uDpr, 0.0, depth) * smoothstep(-1.5 * uDpr, 0.0, -d);\n    float topBias = clamp(dot(g, vec2(-0.6, -0.8)) * 0.5 + 0.5, 0.0, 1.0);\n    glass += vec3(1.0 - 1.6 * lum) * edge * (0.2 + 0.6 * topBias) * 0.8;   // yorug' fonda chet oq emas, qoraroq chiziq\n\n    float m = 1.0 - smoothstep(-0.8 * uDpr, 1.2 * uDpr, d);\n    col = mix(col, glass, m);\n  }\n  outColor = vec4(col, 1.0);\n}\n";
+const FRAGMENT = "#version 300 es\nprecision highp float;\n#define N 32   // LG_MAX_SHAPES bilan bir xil bo'lishi shart\nuniform sampler2D uBg;\nuniform vec2  uRes;\nuniform vec4  uRect[N];\nuniform vec4  uTail[N];\nuniform float uRad[N];\nuniform float uK[N];\nuniform float uAct[N];\nuniform vec4  uTint[N];   // rgb + kuch (0 = tiniq shisha)\nuniform float uDpr, uMerge, uFlip, uShadowK, uShadowOff, uSpecMul, uThickMul, uExtraLod;\nuniform vec2  uLight;\nuniform float uIOR, uThick, uBevel, uDisp, uBlur, uSpec, uAbs;\nout vec4 outColor;\n\nfloat sdRR(vec2 p, vec2 b, float r){\n  vec2 q = abs(p) - b + r;\n  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;\n}\nfloat smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }\n\n// Eng yaqin shaklning kichik yarim o'lchami (sdAll yozadi): chet kengligi shundan oshmasligi uchun\nfloat gMin = 1e5;\nvec4  gTint = vec4(0.0);\n// Bitta tomchi: BITTA jism. Bosh va dum nuqtasi orasidagi farq (cho'zilish) jismni harakat o'qi bo'ylab uzaytiradi,\n// yuzani saqlash uchun enini toraytiradi va orqa tomonini uchiga qarab ingichkalashtiradi (tomchi shakli).\n// uK[i] = maksimal cho'zilish (piksel). Nusxa/ikkinchi jism YO'Q.\nfloat sdDrop(vec2 p, int i){\n  vec4 r = uRect[i];\n  vec2 d = r.xy - uTail[i].xy;\n  float len = length(d);\n  float m = clamp(len / max(uK[i], 1.0), 0.0, 1.0);\n  vec2 u = len > 1e-3 ? d / len : vec2(1.0, 0.0);\n  vec2 q = p - (r.xy - u * (0.30 * len));\n  float a = dot(q, u), b = dot(q, vec2(-u.y, u.x));\n  float hl = max(abs(u.x) * r.z + abs(u.y) * r.w, 1.0);\n  float sS = 1.0 + 0.45 * m;\n  float rear = pow(clamp(-a / (hl * 1.2), 0.0, 1.0), 1.6);\n  float taper = 1.0 + 1.8 * m * rear;\n  float a2 = a / sS, b2 = b * sqrt(sS) * taper;\n  vec2 p2 = vec2(a2 * u.x - b2 * u.y, a2 * u.y + b2 * u.x);\n  float rr = mix(min(uRad[i], min(r.z, r.w)), min(r.z, r.w), clamp(m * 1.2, 0.0, 1.0));   // cho'zilganda to'liq yumaloq (kapsula)\n  return sdRR(p2, r.zw, rr) / (1.0 + 0.7 * 1.8 * m * rear);\n}\n// Qatlamdagi barcha tomchilarning umumiy maydoni: yaqinlashganda suyuqdek qo'shiladi.\nfloat sdAll(vec2 p){\n  float d = 1e5, bm = 1e5;\n  vec4 bt = vec4(0.0);\n  for (int i = 0; i < N; i++){\n    if (uAct[i] < 0.5) continue;\n    float di = sdDrop(p, i);\n    if (di < d) { bm = min(uRect[i].z, uRect[i].w); bt = uTint[i]; }\n    d = smin(d, di, max(uMerge, 0.5));\n  }\n  gMin = bm;\n  gTint = bt;\n  return d;\n}\nvec3 bgAt(vec2 px, float lod){\n  vec2 uv = clamp(px / uRes, vec2(0.001), vec2(0.999));\n  if (uFlip > 0.5) uv.y = 1.0 - uv.y;\n  return textureLod(uBg, uv, lod).rgb;\n}\nvec2 refractOffset(float ior, vec3 Nn, float t, float dist, out float tir){\n  vec3 R = refract(vec3(0.0, 0.0, -1.0), Nn, 1.0 / ior);\n  vec2 inner = R.xy / max(-R.z, 0.08) * t;\n  float s = ior * length(R.xy);\n  tir = step(0.985, s);\n  s = min(s, 0.985);\n  vec3 O = vec3(R.xy * ior, -sqrt(1.0 - s * s));\n  vec2 outer = O.xy / (-O.z) * dist;\n  return inner + outer;\n}\n\nvoid main(){\n  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);\n  vec3 col = bgAt(px, 0.0);\n  // Fon yorug'ligi (0 = qorong'i, 1 = oq): shisha qorong'i va yorug' fonda turlicha ko'rinishi uchun\n  float lum = clamp(dot(bgAt(px, 6.0), vec3(0.299, 0.587, 0.114)), 0.0, 1.0);\n  float d = sdAll(px);\n  float halfMin = gMin;\n  vec4 tint = gTint;\n\n  // Soya va kaustika: sahnaning o'ziga (tagidagi tugma/matnga ham) tushadi. Uzoqda hisoblanmaydi.\n  if (d > 0.0 && d < (90.0 + uShadowOff * 2.0) * uDpr){\n    float ds = sdAll(px - vec2(0.0, uShadowOff * uDpr));\n    float sh = exp(-max(ds, 0.0) / ((10.0 + uShadowOff * 0.5) * uDpr)) * uShadowK * mix(1.0, 0.25, lum);\n    float dc = sdAll(px - vec2(0.0, uShadowOff * 1.9 * uDpr)) + 7.0 * uDpr;\n    float caus = exp(-abs(dc) / (26.0 * uDpr)) * 0.2;\n    col *= 1.0 - sh;\n    col += vec3(0.38, 0.72, 1.0) * caus * (0.35 + sh) * (1.0 - 0.7 * lum);\n  }\n\n  if (d < 1.5 * uDpr){\n    // Chet kengligi jismning yarmidan oshmaydi: markaz DOIM tiniq (linza emas, oyna) qoladi\n    float zR = min(uBevel * uDpr, halfMin * 0.5);\n    float depth = max(-d, 0.0);\n    float e = 1.0;\n    vec2 g = vec2(sdAll(px + vec2(e, 0.0)) - sdAll(px - vec2(e, 0.0)),\n                  sdAll(px + vec2(0.0, e)) - sdAll(px - vec2(0.0, e)));\n    g = normalize(g + 1e-6);\n\n    float dd = clamp(depth, 0.0, zR);\n    float h = sqrt(max(dd * (2.0 * zR - dd), 0.0));\n    float dh = dd >= zR ? 0.0 : min((zR - dd) / sqrt(max(dd * (2.0 * zR - dd), 1.0)), 9.0);\n    vec3 Nn = normalize(vec3(g * dh, 1.0));\n\n    float th = uThick * uThickMul;\n    float t = (0.25 * zR + h) * th / max(zR, 1.0) * uDpr;\n    float dist = 1.15 * th * uDpr;\n\n    float tirR, tirG, tirB;\n    vec2 oR = refractOffset(uIOR - uDisp, Nn, t, dist, tirR);\n    vec2 oG = refractOffset(uIOR,         Nn, t, dist, tirG);\n    vec2 oB = refractOffset(uIOR + uDisp, Nn, t, dist, tirB);\n\n    float lod = uBlur + uExtraLod + (h / max(zR, 1.0)) * uBlur * 0.6;\n    float k = (0.6 + lod) * uDpr;\n    vec2 pr = px + oR, pg = px + oG, pb = px + oB;\n    vec3 tr = vec3(\n      (bgAt(pr, lod).r * 2.0 + bgAt(pr + vec2(k, 0.0), lod).r + bgAt(pr - vec2(k, 0.0), lod).r + bgAt(pr + vec2(0.0, k), lod).r + bgAt(pr - vec2(0.0, k), lod).r) / 6.0,\n      (bgAt(pg, lod).g * 2.0 + bgAt(pg + vec2(k, 0.0), lod).g + bgAt(pg - vec2(k, 0.0), lod).g + bgAt(pg + vec2(0.0, k), lod).g + bgAt(pg - vec2(0.0, k), lod).g) / 6.0,\n      (bgAt(pb, lod).b * 2.0 + bgAt(pb + vec2(k, 0.0), lod).b + bgAt(pb - vec2(k, 0.0), lod).b + bgAt(pb + vec2(0.0, k), lod).b + bgAt(pb - vec2(0.0, k), lod).b) / 6.0);\n\n    float path = t / max(abs(refract(vec3(0.0, 0.0, -1.0), Nn, 1.0 / uIOR).z), 0.1) / uDpr;\n    tr *= exp(-uAbs * path * vec3(0.0042, 0.0036, 0.0030) * (1.0 - 0.7 * lum));   // deyarli neytral: sovuq ko'k tus yo'q\n    tr = mix(tr, tr * vec3(0.98, 0.99, 1.02), 0.6);\n    tr *= mix(1.0, 0.93, lum);\n    // Rangli shisha: rang qo'shiladi, lekin orqadagi tafsilot (yorug'lik) saqlanadi\n    tr = mix(tr, tint.rgb * (0.5 + 0.5 * dot(tr, vec3(0.3333))), tint.a);\n\n    float cosT = clamp(Nn.z, 0.0, 1.0);\n    float F = 0.04 + 0.96 * pow(1.0 - cosT, 5.0);\n    vec3 env = mix(vec3(0.05, 0.08, 0.14), vec3(0.78, 0.9, 1.0), clamp(Nn.y * -0.5 + 0.5, 0.0, 1.0));\n    env += vec3(0.10, 0.06, 0.16) * clamp(Nn.x * 0.5 + 0.5, 0.0, 1.0);\n    vec3 refl = env * F * 1.55 * mix(1.0, 0.4, lum);\n\n    float tir = max(max(tirR, tirG), tirB);\n    vec3 tirGlow = vec3(0.75, 0.9, 1.0) * pow(1.0 - cosT, 3.0) * 0.6 * (0.4 + 0.6 * tir) * mix(1.0, 0.35, lum);\n\n    // Yorug'lik kursorga ergashadi (uLight: -1..1)\n    vec3 V = vec3(0.0, 0.0, 1.0);\n    vec3 L1 = normalize(vec3(-0.55 + uLight.x * 0.5, -0.65 + uLight.y * 0.5, 0.75));\n    vec3 L2 = normalize(vec3( 0.60 - uLight.x * 0.3,  0.55 - uLight.y * 0.3, 0.55));\n    float s1 = pow(max(dot(Nn, normalize(L1 + V)), 0.0), 160.0);\n    float s2 = pow(max(dot(Nn, normalize(L2 + V)), 0.0), 110.0) * 0.5;\n    vec3 spec = vec3(1.0) * (s1 + s2) * uSpec * uSpecMul * 1.3;\n\n    vec3 glass = tr * (1.0 - F * 0.9) + refl + tirGlow + spec;\n\n    float edge = smoothstep(2.0 * uDpr, 0.0, depth) * smoothstep(-1.5 * uDpr, 0.0, -d);\n    float topBias = clamp(dot(g, vec2(-0.6, -0.8)) * 0.5 + 0.5, 0.0, 1.0);\n    glass += vec3(1.0 - 1.6 * lum) * edge * (0.2 + 0.6 * topBias) * 0.8;   // yorug' fonda chet oq emas, qoraroq chiziq\n\n    float m = 1.0 - smoothstep(-0.8 * uDpr, 1.2 * uDpr, d);\n    col = mix(col, glass, m);\n  }\n  outColor = vec4(col, 1.0);\n}\n";
 
 __lg.VERTEX = VERTEX;
 __lg.FRAGMENT = FRAGMENT;
@@ -59,9 +59,9 @@ class Scene {
     this.acc = 0;
   }
 
-  add({ w = 100, h = 60, radius = 30, draggable = true } = {}, pos = { x: 0, y: 0 }) {
+  add({ w = 100, h = 60, radius = 30, draggable = true, tint = [0, 0, 0, 0] } = {}, pos = { x: 0, y: 0 }) {
     if (this.s.length >= MAX_SHAPES) return -1;
-    this.s.push({ w, h, radius, draggable, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, focus: 1 });
+    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, focus: 1 });
     if (this.focusIdx < 0 && draggable) this.focusIdx = this.s.length - 1;
     return this.s.length - 1;
   }
@@ -163,7 +163,7 @@ class Scene {
   pack(pass, dpr) {
     const u = {
       rect: new Float32Array(MAX_SHAPES * 4), tail: new Float32Array(MAX_SHAPES * 4),
-      rad: new Float32Array(MAX_SHAPES), k: new Float32Array(MAX_SHAPES), act: new Float32Array(MAX_SHAPES),
+      rad: new Float32Array(MAX_SHAPES), k: new Float32Array(MAX_SHAPES), act: new Float32Array(MAX_SHAPES), tint: new Float32Array(MAX_SHAPES * 4),
       merge: this.params.merge * dpr,
     };
     this.s.forEach((s, i) => {
@@ -173,6 +173,7 @@ class Scene {
       u.rad[i] = s.radius * g * dpr;
       u.k[i] = this.#reach(s) * dpr;
       u.act[i] = (pass === 'front') === this.isFront(i) ? 1 : 0;
+      u.tint.set(s.tint, i * 4);
     });
     Object.assign(u, pass === 'back'
       ? { flip: 0, shadowK: 0.30, shadowOff: 7, specMul: 0.5, thickMul: 0.75, extraLod: 0 }
@@ -191,7 +192,7 @@ __lg.Scene = Scene;
 }
 {
 const { VERTEX, FRAGMENT } = __lg;
-const UNIFORMS = ['uBg', 'uRes', 'uRect', 'uTail', 'uRad', 'uK', 'uAct', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
+const UNIFORMS = ['uBg', 'uRes', 'uRect', 'uTail', 'uRad', 'uK', 'uAct', 'uTint', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
   'uSpecMul', 'uThickMul', 'uExtraLod', 'uLight', 'uIOR', 'uThick', 'uBevel', 'uDisp', 'uBlur', 'uSpec', 'uAbs'];
 
 function compile(gl, type, src) {
@@ -266,7 +267,7 @@ class Renderer {
 
     const pass = (u) => {
       gl.uniform4fv(loc.uRect, u.rect); gl.uniform4fv(loc.uTail, u.tail);
-      gl.uniform1fv(loc.uRad, u.rad); gl.uniform1fv(loc.uK, u.k); gl.uniform1fv(loc.uAct, u.act);
+      gl.uniform1fv(loc.uRad, u.rad); gl.uniform1fv(loc.uK, u.k); gl.uniform1fv(loc.uAct, u.act); gl.uniform4fv(loc.uTint, u.tint);
       gl.uniform1f(loc.uMerge, u.merge); gl.uniform1f(loc.uFlip, u.flip);
       gl.uniform1f(loc.uShadowK, u.shadowK); gl.uniform1f(loc.uShadowOff, u.shadowOff);
       gl.uniform1f(loc.uSpecMul, u.specMul); gl.uniform1f(loc.uThickMul, u.thickMul); gl.uniform1f(loc.uExtraLod, u.extraLod);
@@ -820,7 +821,8 @@ const DEFAULTS = {
   maxShapes: 32,                         // bir vaqtda (GPU uniform chegarasi: 32)
   minSize: [28, 24],                     // bundan kichik elementlar o'tkazib yuboriladi (px)
   params: {},                            // glass.params ga beriladi (bevel, thick, ...)
-  labelContrast: true,                   // yozuv rangi shisha ostidagi fon yorug'ligiga moslashadi
+  labelContrast: true,
+  tint: true,                            // asl tugma rangi shisha rangiga o'tadi                   // yozuv rangi shisha ostidagi fon yorug'ligiga moslashadi
   zIndex: 2147483000,
 };
 
@@ -854,6 +856,25 @@ class DomGlass {
 
   get isDirty() { return this.dirty && !this.busy; }
 
+  // Asl tugmaning fon rangi shisha rangiga aylanadi (qizil "Tozalash" qizil shisha, faol bo'lim moviy shisha va hokazo).
+  // Shaffof yoki oq fon = tiniq shisha.
+  #tintOf(cs) {
+    if (!this.o.tint) return [0, 0, 0, 0];
+    const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/);
+    if (!m) return [0, 0, 0, 0];
+    const [r, g, b, a = 1] = m[1].split(',').map(Number);
+    if (a < 0.15 || (r > 225 && g > 225 && b > 225)) {
+      // och yoki shaffof fon: rang yozuvdan olinadi (qizil yozuv -> qizil shisha), kulrang/qora yozuv -> tiniq shisha
+      const t = cs.color.match(/rgba?\(([^)]+)\)/);
+      if (!t) return [0, 0, 0, 0];
+      const [tr, tg, tb] = t[1].split(',').map(Number), mx = Math.max(tr, tg, tb), mn = Math.min(tr, tg, tb);
+      const lum = (0.299 * tr + 0.587 * tg + 0.114 * tb) / 255;   // to'q (qora-ko'k) yozuv rang emas, shunchaki matn
+      if (mx === 0 || lum < 0.28 || (mx - mn) / mx < 0.55) return [0, 0, 0, 0];
+      return [tr / 255, tg / 255, tb / 255, 0.3];
+    }
+    return [r / 255, g / 255, b / 255, Math.min(Math.max(a * 0.85, 0.2), 0.7)];
+  }
+
   #collect() {
     const { selector, exclude, maxShapes, minSize } = this.o, out = [];
     for (const el of document.querySelectorAll(selector)) {
@@ -863,7 +884,7 @@ class DomGlass {
       if (r.width < minSize[0] || r.height < minSize[1] || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
-      out.push({ el, r, rad: Math.min(parseFloat(cs.borderTopLeftRadius) || 12, Math.min(r.width, r.height) / 2) });
+      out.push({ el, r, rad: Math.min(parseFloat(cs.borderTopLeftRadius) || 12, Math.min(r.width, r.height) / 2), tint: this.#tintOf(cs) });
       if (out.length >= maxShapes) break;
     }
     return out;
@@ -916,17 +937,19 @@ class DomGlass {
     const lumAt = (r) => { pc.drawImage(source, r.left * sx, r.top * sy, r.width * sx, r.height * sy, 0, 0, 1, 1); const d = pc.getImageData(0, 0, 1, 1).data; return (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255; };
 
     this.rects = [];
-    this.items.forEach(({ el, r, rad }) => {
+    this.items.forEach(({ el, r, rad, tint }) => {
       const lab = el.cloneNode(true);
       lab.setAttribute('data-lg', '1'); lab.removeAttribute('id');
-      const dark = o.labelContrast ? lumAt(r) > 0.55 : null;
+      const tl = 0.299 * tint[0] + 0.587 * tint[1] + 0.114 * tint[2];
+      // rangli shishada yozuv rangi shisha rangiga, aks holda fon yorug'ligiga qarab
+      const dark = o.labelContrast ? (tint[3] > 0.35 ? tl > 0.6 : lumAt(r) > 0.55) : null;
       const col = dark === null ? '' : `color:${dark ? '#0f172a' : '#fff'} !important;text-shadow:${dark ? 'none' : '0 1px 4px rgba(0,0,0,.5)'};`;
       // asl fon/soya/chekinish olib tashlanadi (margin: aks holda yozuv siljiydi), pointer-events yo'q (bosish asl tugmaga o'tadi)
       lab.style.cssText += `;background:none !important;box-shadow:none !important;border-color:transparent !important;backdrop-filter:none !important;pointer-events:none !important;opacity:1 !important;margin:0 !important;inset:auto;z-index:${o.zIndex + 1};${col}`;
       if (dark !== null) lab.querySelectorAll('*').forEach((c) => c.style.setProperty('color', dark ? '#0f172a' : '#fff', 'important'));
       document.body.appendChild(lab);
       this.labels.push(lab);
-      glass.add({ w: r.width, h: r.height, radius: rad, draggable: false }, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, lab);
+      glass.add({ w: r.width, h: r.height, radius: rad, draggable: false, tint }, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, lab);
       this.rects.push(r);
     });
 

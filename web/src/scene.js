@@ -48,9 +48,9 @@ export class Scene {
     this.acc = 0;
   }
 
-  add({ w = 100, h = 60, radius = 30, draggable = true } = {}, pos = { x: 0, y: 0 }) {
+  add({ w = 100, h = 60, radius = 30, draggable = true, tint = [0, 0, 0, 0] } = {}, pos = { x: 0, y: 0 }) {
     if (this.s.length >= MAX_SHAPES) return -1;
-    this.s.push({ w, h, radius, draggable, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, focus: 1 });
+    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, focus: 1 });
     if (this.focusIdx < 0 && draggable) this.focusIdx = this.s.length - 1;
     return this.s.length - 1;
   }
@@ -152,7 +152,7 @@ export class Scene {
   pack(pass, dpr) {
     const u = {
       rect: new Float32Array(MAX_SHAPES * 4), tail: new Float32Array(MAX_SHAPES * 4),
-      rad: new Float32Array(MAX_SHAPES), k: new Float32Array(MAX_SHAPES), act: new Float32Array(MAX_SHAPES),
+      rad: new Float32Array(MAX_SHAPES), k: new Float32Array(MAX_SHAPES), act: new Float32Array(MAX_SHAPES), tint: new Float32Array(MAX_SHAPES * 4),
       merge: this.params.merge * dpr,
     };
     this.s.forEach((s, i) => {
@@ -162,6 +162,7 @@ export class Scene {
       u.rad[i] = s.radius * g * dpr;
       u.k[i] = this.#reach(s) * dpr;
       u.act[i] = (pass === 'front') === this.isFront(i) ? 1 : 0;
+      u.tint.set(s.tint, i * 4);
     });
     Object.assign(u, pass === 'back'
       ? { flip: 0, shadowK: 0.30, shadowOff: 7, specMul: 0.5, thickMul: 0.75, extraLod: 0 }

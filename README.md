@@ -1,5 +1,7 @@
 # liquidglass
 
+![rigid glass](web/docs/glass.png)
+
 Physically based "liquid glass" UI: refraction, dispersion, Fresnel, total internal reflection, fluid merging of shapes,
 and depth by focus. Plus an optional particle-based water mode.
 

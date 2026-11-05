@@ -136,6 +136,7 @@ PassUniforms Scene::pack(Pass pass, float dpr) const {
         u.rad[i] = s.d.radius * g * dpr;
         u.k[i] = reach(i) * dpr;
         u.act[i] = ((pass == Pass::Front) == isFront(i)) ? 1.0f : 0.0f;
+        std::copy(s.d.tint, s.d.tint + 4, u.tint + i * 4);
     }
     u.merge = params.merge * dpr;
     if (pass == Pass::Back) { u.flip = 0; u.shadowK = 0.30f; u.shadowOff = 7;  u.specMul = 0.5f; u.thickMul = 0.75f; u.extraLod = 0; }
