@@ -1,6 +1,6 @@
 {
   "name": "@dilmurod3037729/liquidglass-web",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Physically based liquid glass (refraction, dispersion, fluid merging, depth) for the web, WebGL2",
   "type": "module",
   "main": "src/index.js",

@@ -100,6 +100,19 @@ int main() {
     for (int i = 0; i < 120; i++) sc.step(1.0f / 60.0f);
     CHECK(std::fabs(sc.scale(cap) - base) < 0.005f);
 
+    // Hover: kursor ostida biroz kattalashadi, ketsa qaytadi; teleport lagsiz
+    Scene hv;
+    hv.add({100, 40, 20, false}, {0, 0});
+    const float hbase = hv.scale(0);
+    hv.setHovered(0);
+    for (int i = 0; i < 90; i++) hv.step(1.0f / 60.0f);
+    CHECK(hv.scale(0) > hbase + 0.008f && hv.scale(0) < hbase + 0.02f);
+    hv.setHovered(-1);
+    for (int i = 0; i < 120; i++) hv.step(1.0f / 60.0f);
+    CHECK(std::fabs(hv.scale(0) - hbase) < 0.002f);
+    hv.teleport(0, {300, 200});
+    CHECK(std::fabs(hv.position(0).x - 300) < 1e-4f && std::fabs(hv.tailPosition(0).y - 200) < 1e-4f);
+
     std::printf(fails ? "%d xato\n" : "hammasi o'tdi\n", fails);
     return fails ? 1 : 0;
 }

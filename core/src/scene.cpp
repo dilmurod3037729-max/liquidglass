@@ -10,7 +10,7 @@ constexpr float kStep = 1.0f / 60.0f;
 // "Og'ir tomchi": ikkala harakat ham kritik so'nuvchi (tebranish YO'Q). Bosh sichqonchaga sust ergashadi,
 // dum undan ham sust; farq cho'zilgan suyuq ip hosil qiladi. omega katta = yengil, kichik = og'ir.
 constexpr float kHeadOmega = 10.0f, kTailOmega = 5.5f;
-constexpr float kPressRate = 0.12f, kFocusRate = 0.10f;
+constexpr float kPressRate = 0.12f, kHoverRate = 0.18f, kFocusRate = 0.10f;
 constexpr float kEps = 0.04f;
 }  // namespace
 
@@ -26,12 +26,18 @@ int Scene::add(const ShapeDesc& d, Vec2 pos) {
 }
 
 void Scene::setTarget(int id, Vec2 p) { s_[id].tx = p.x; s_[id].ty = p.y; }
+void Scene::teleport(int id, Vec2 p) {
+    Shape& s = s_[id];
+    s.x = s.tx = s.ex = p.x;
+    s.y = s.ty = s.ey = p.y;
+    s.hvx = s.hvy = s.vx = s.vy = 0;
+}
 void Scene::setPressed(int id, bool down) { pressed_ = down ? id : (pressed_ == id ? -1 : pressed_); }
 void Scene::focus(int id) { if (id >= 0 && id < count() && s_[id].d.draggable) focus_ = id; }
 
 bool Scene::isFront(int id) const { return !s_[id].d.draggable || id == focus_; }
 
-float Scene::grow(const Shape& s) const { return (1.0f + 0.03f * s.press) * (0.955f + 0.045f * s.focus); }
+float Scene::grow(const Shape& s) const { return (1.0f + 0.03f * s.press + 0.012f * s.hover) * (0.955f + 0.045f * s.focus); }
 float Scene::scale(int id) const { return grow(s_[id]); }
 
 // Tomchi dumi uzilmaydi va nusxa qoldirmaydi: bosh va dum nuqtasi orasidagi masofa reach() dan oshmaydi
@@ -69,6 +75,9 @@ bool Scene::stepOnce() {
         const float wp = (pressed_ == i) ? 1.0f : 0.0f;
         s.press += (wp - s.press) * kPressRate;
         if (std::fabs(wp - s.press) > 0.002f) moving = true;
+        const float wh2 = (hovered_ == i) ? 1.0f : 0.0f;
+        s.hover += (wh2 - s.hover) * kHoverRate;
+        if (std::fabs(wh2 - s.hover) > 0.002f) moving = true;
 
         const float heavy = 1.0f / (0.5f + 0.5f * std::max(E, 0.0f));   // elastic = "qovushqoqlik": katta = og'irroq
         const float wh = kHeadOmega * heavy, wt = kTailOmega * heavy;

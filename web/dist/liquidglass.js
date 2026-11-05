@@ -15,7 +15,7 @@ const MAX_SHAPES = 256;
 
 const STEP = 1 / 60;
 // Og'ir tomchi: kritik so'nuvchi harakat (tebranish yo'q). C++ yadro bilan bir xil bo'lishi shart.
-const HEAD_OMEGA = 10, TAIL_OMEGA = 5.5, PRESS_RATE = 0.12, FOCUS_RATE = 0.10, EPS = 0.04;
+const HEAD_OMEGA = 10, TAIL_OMEGA = 5.5, PRESS_RATE = 0.12, HOVER_RATE = 0.18, FOCUS_RATE = 0.10, EPS = 0.04;
 
 const defaultParams = () => ({
   ior: 1.55, thick: 40, bevel: 26, disp: 0.04, blur: 0.35,
@@ -56,12 +56,13 @@ class Scene {
     this.s = [];
     this.focusIdx = -1;
     this.pressed = -1;
+    this.hovered = -1;
     this.acc = 0;
   }
 
   add({ w = 100, h = 60, radius = 30, draggable = true, tint = [0, 0, 0, 0] } = {}, pos = { x: 0, y: 0 }) {
     if (this.s.length >= MAX_SHAPES) return -1;
-    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, focus: 1 });
+    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, hover: 0, focus: 1 });
     if (this.focusIdx < 0 && draggable) this.focusIdx = this.s.length - 1;
     return this.s.length - 1;
   }
@@ -69,6 +70,9 @@ class Scene {
   get count() { return this.s.length; }
   get focused() { return this.focusIdx; }
   setTarget(id, p) { this.s[id].tx = p.x; this.s[id].ty = p.y; }
+  setHovered(id) { this.hovered = id; }   // kursor ostidagi shakl (-1 = yo'q): biroz kattalashadi
+  /** Zudlik bilan joylashtirish (lagsiz): sahifa surilganda asl elementga ergashish uchun */
+  teleport(id, x, y) { const s = this.s[id]; s.x = s.tx = s.ex = x; s.y = s.ty = s.ey = y; s.hvx = s.hvy = s.vx = s.vy = 0; }
   setPressed(id, down) { this.pressed = down ? id : (this.pressed === id ? -1 : this.pressed); }
   focus(id) { if (id >= 0 && id < this.s.length && this.s[id].draggable) this.focusIdx = id; }
   isFront(id) { return !this.s[id].draggable || id === this.focusIdx; }
@@ -76,7 +80,7 @@ class Scene {
   depth(id) { return this.s[id].focus; }
   scale(id) { return this.#grow(this.s[id]); }
 
-  #grow(s) { return (1 + 0.03 * s.press) * (0.955 + 0.045 * s.focus); }
+  #grow(s) { return (1 + 0.03 * s.press + 0.012 * s.hover) * (0.955 + 0.045 * s.focus); }
   // Tomchi dumi uzilmaydi va nusxa qoldirmaydi: bosh va dum nuqtasi orasidagi masofa reach() dan oshmaydi
   #reach(s) { return 0.55 * Math.min(s.w, s.h) + 40; }
   reach(id) { return this.#reach(this.s[id]); }
@@ -111,6 +115,9 @@ class Scene {
       const wp = this.pressed === i ? 1 : 0;
       s.press += (wp - s.press) * PRESS_RATE;
       if (Math.abs(wp - s.press) > 0.002) moving = true;
+      const wh2 = this.hovered === i ? 1 : 0;
+      s.hover += (wh2 - s.hover) * HOVER_RATE;
+      if (Math.abs(wh2 - s.hover) > 0.002) moving = true;
 
       const heavy = 1 / (0.5 + 0.5 * Math.max(E, 0));
       const wh = HEAD_OMEGA * heavy, wt = TAIL_OMEGA * heavy;
@@ -864,6 +871,19 @@ class DomGlass {
     this._mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
     this._resize = () => { this.dirty = true; this._onDirty && this._onDirty(); };
     addEventListener('resize', this._resize);
+    // Sahifa surilganda shisha asl elementlarga ergashadi (zudlik bilan), surilish tugagach surat qayta olinadi
+    let raf = 0, settle = 0;
+    this._scroll = () => {
+      if (!this.glass || raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        this.items.forEach(({ el }, i) => { const r = el.getBoundingClientRect(); this.rects[i] = r; this.glass.scene.teleport(i, r.left + r.width / 2, r.top + r.height / 2); });
+        this.glass.wake();
+      });
+      clearTimeout(settle);
+      settle = setTimeout(() => { this.dirty = true; this._onDirty && this._onDirty(); }, 160);
+    };
+    addEventListener('scroll', this._scroll, true);
   }
 
   get isDirty() { return this.dirty && !this.busy; }
@@ -912,7 +932,11 @@ class DomGlass {
 
   teardown() {
     this.busy = true;
-    if (this._down) { document.removeEventListener('pointerdown', this._down, true); document.removeEventListener('pointerup', this._up, true); this._down = this._up = null; }
+    if (this._down) {
+      document.removeEventListener('pointerdown', this._down, true); document.removeEventListener('pointerup', this._up, true);
+      document.removeEventListener('pointermove', this._move, true); document.removeEventListener('mouseout', this._leave, true);
+      this._down = this._up = this._move = this._leave = null;
+    }
     if (this.glass) { this.glass.dispose(); this.glass = null; }
     if (this.canvas) { this.canvas.remove(); this.canvas = null; }
     this.labels.forEach((l) => l.remove()); this.labels = [];
@@ -967,6 +991,10 @@ class DomGlass {
 
     // asl tugma bosilganda mos shisha "bosilgan" holatga o'tadi
     const find = (e) => this.rects.findIndex((r) => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+    this._move = (e) => { glass.scene.setHovered(find(e)); glass.wake(); };
+    this._leave = (e) => { if (!e.relatedTarget) { glass.scene.setHovered(-1); glass.wake(); } };
+    document.addEventListener('pointermove', this._move, true);
+    document.addEventListener('mouseout', this._leave, true);
     this._down = (e) => { const i = find(e); if (i >= 0) { glass.scene.setPressed(i, true); glass.wake(); } };
     this._up = () => { glass.scene.pressed = -1; glass.wake(); };
     document.addEventListener('pointerdown', this._down, true);
@@ -986,7 +1014,7 @@ class DomGlass {
   }
 
   dispose() {
-    this.teardown(); this._mo.disconnect(); removeEventListener('resize', this._resize);
+    this.teardown(); this._mo.disconnect(); removeEventListener('resize', this._resize); removeEventListener('scroll', this._scroll, true);
     this.busy = false;
   }
 }

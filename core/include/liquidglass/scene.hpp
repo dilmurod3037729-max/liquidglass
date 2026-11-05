@@ -15,6 +15,8 @@ public:
 
     void setTarget(int id, Vec2 p);                   // sudrash nishoni
     void setPressed(int id, bool down);               // bosilgan: biroz kattalashadi
+    void setHovered(int id) { hovered_ = id; }        // kursor ostidagi shakl (-1 = yo'q): biroz kattalashadi
+    void teleport(int id, Vec2 p);                    // zudlik bilan (lagsiz) joylashtirish
     void focus(int id);                               // shu shakl oldinga, qolgan sudraladiganlar orqaga
     int  focused() const { return focus_; }
     bool isFront(int id) const;
@@ -39,11 +41,12 @@ private:
     struct Shape {
         ShapeDesc d;
         float x = 0, y = 0, tx = 0, ty = 0, ex = 0, ey = 0, vx = 0, vy = 0, hvx = 0, hvy = 0;
-        float press = 0, focus = 1;
+        float press = 0, hover = 0, focus = 1;
     };
     std::vector<Shape> s_;
     int   focus_ = -1;
     int   pressed_ = -1;
+    int   hovered_ = -1;
     float acc_ = 0;
 
     bool  stepOnce();

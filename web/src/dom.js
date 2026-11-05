@@ -37,6 +37,19 @@ export class DomGlass {
     this._mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
     this._resize = () => { this.dirty = true; this._onDirty && this._onDirty(); };
     addEventListener('resize', this._resize);
+    // Sahifa surilganda shisha asl elementlarga ergashadi (zudlik bilan), surilish tugagach surat qayta olinadi
+    let raf = 0, settle = 0;
+    this._scroll = () => {
+      if (!this.glass || raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        this.items.forEach(({ el }, i) => { const r = el.getBoundingClientRect(); this.rects[i] = r; this.glass.scene.teleport(i, r.left + r.width / 2, r.top + r.height / 2); });
+        this.glass.wake();
+      });
+      clearTimeout(settle);
+      settle = setTimeout(() => { this.dirty = true; this._onDirty && this._onDirty(); }, 160);
+    };
+    addEventListener('scroll', this._scroll, true);
   }
 
   get isDirty() { return this.dirty && !this.busy; }
@@ -85,7 +98,11 @@ export class DomGlass {
 
   teardown() {
     this.busy = true;
-    if (this._down) { document.removeEventListener('pointerdown', this._down, true); document.removeEventListener('pointerup', this._up, true); this._down = this._up = null; }
+    if (this._down) {
+      document.removeEventListener('pointerdown', this._down, true); document.removeEventListener('pointerup', this._up, true);
+      document.removeEventListener('pointermove', this._move, true); document.removeEventListener('mouseout', this._leave, true);
+      this._down = this._up = this._move = this._leave = null;
+    }
     if (this.glass) { this.glass.dispose(); this.glass = null; }
     if (this.canvas) { this.canvas.remove(); this.canvas = null; }
     this.labels.forEach((l) => l.remove()); this.labels = [];
@@ -140,6 +157,10 @@ export class DomGlass {
 
     // asl tugma bosilganda mos shisha "bosilgan" holatga o'tadi
     const find = (e) => this.rects.findIndex((r) => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+    this._move = (e) => { glass.scene.setHovered(find(e)); glass.wake(); };
+    this._leave = (e) => { if (!e.relatedTarget) { glass.scene.setHovered(-1); glass.wake(); } };
+    document.addEventListener('pointermove', this._move, true);
+    document.addEventListener('mouseout', this._leave, true);
     this._down = (e) => { const i = find(e); if (i >= 0) { glass.scene.setPressed(i, true); glass.wake(); } };
     this._up = () => { glass.scene.pressed = -1; glass.wake(); };
     document.addEventListener('pointerdown', this._down, true);
@@ -159,7 +180,7 @@ export class DomGlass {
   }
 
   dispose() {
-    this.teardown(); this._mo.disconnect(); removeEventListener('resize', this._resize);
+    this.teardown(); this._mo.disconnect(); removeEventListener('resize', this._resize); removeEventListener('scroll', this._scroll, true);
     this.busy = false;
   }
 }

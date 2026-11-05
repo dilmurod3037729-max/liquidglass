@@ -4,7 +4,7 @@ export const MAX_SHAPES = 256;
 
 const STEP = 1 / 60;
 // Og'ir tomchi: kritik so'nuvchi harakat (tebranish yo'q). C++ yadro bilan bir xil bo'lishi shart.
-const HEAD_OMEGA = 10, TAIL_OMEGA = 5.5, PRESS_RATE = 0.12, FOCUS_RATE = 0.10, EPS = 0.04;
+const HEAD_OMEGA = 10, TAIL_OMEGA = 5.5, PRESS_RATE = 0.12, HOVER_RATE = 0.18, FOCUS_RATE = 0.10, EPS = 0.04;
 
 export const defaultParams = () => ({
   ior: 1.55, thick: 40, bevel: 26, disp: 0.04, blur: 0.35,
@@ -45,12 +45,13 @@ export class Scene {
     this.s = [];
     this.focusIdx = -1;
     this.pressed = -1;
+    this.hovered = -1;
     this.acc = 0;
   }
 
   add({ w = 100, h = 60, radius = 30, draggable = true, tint = [0, 0, 0, 0] } = {}, pos = { x: 0, y: 0 }) {
     if (this.s.length >= MAX_SHAPES) return -1;
-    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, focus: 1 });
+    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, hover: 0, focus: 1 });
     if (this.focusIdx < 0 && draggable) this.focusIdx = this.s.length - 1;
     return this.s.length - 1;
   }
@@ -58,6 +59,9 @@ export class Scene {
   get count() { return this.s.length; }
   get focused() { return this.focusIdx; }
   setTarget(id, p) { this.s[id].tx = p.x; this.s[id].ty = p.y; }
+  setHovered(id) { this.hovered = id; }   // kursor ostidagi shakl (-1 = yo'q): biroz kattalashadi
+  /** Zudlik bilan joylashtirish (lagsiz): sahifa surilganda asl elementga ergashish uchun */
+  teleport(id, x, y) { const s = this.s[id]; s.x = s.tx = s.ex = x; s.y = s.ty = s.ey = y; s.hvx = s.hvy = s.vx = s.vy = 0; }
   setPressed(id, down) { this.pressed = down ? id : (this.pressed === id ? -1 : this.pressed); }
   focus(id) { if (id >= 0 && id < this.s.length && this.s[id].draggable) this.focusIdx = id; }
   isFront(id) { return !this.s[id].draggable || id === this.focusIdx; }
@@ -65,7 +69,7 @@ export class Scene {
   depth(id) { return this.s[id].focus; }
   scale(id) { return this.#grow(this.s[id]); }
 
-  #grow(s) { return (1 + 0.03 * s.press) * (0.955 + 0.045 * s.focus); }
+  #grow(s) { return (1 + 0.03 * s.press + 0.012 * s.hover) * (0.955 + 0.045 * s.focus); }
   // Tomchi dumi uzilmaydi va nusxa qoldirmaydi: bosh va dum nuqtasi orasidagi masofa reach() dan oshmaydi
   #reach(s) { return 0.55 * Math.min(s.w, s.h) + 40; }
   reach(id) { return this.#reach(this.s[id]); }
@@ -100,6 +104,9 @@ export class Scene {
       const wp = this.pressed === i ? 1 : 0;
       s.press += (wp - s.press) * PRESS_RATE;
       if (Math.abs(wp - s.press) > 0.002) moving = true;
+      const wh2 = this.hovered === i ? 1 : 0;
+      s.hover += (wh2 - s.hover) * HOVER_RATE;
+      if (Math.abs(wh2 - s.hover) > 0.002) moving = true;
 
       const heavy = 1 / (0.5 + 0.5 * Math.max(E, 0));
       const wh = HEAD_OMEGA * heavy, wt = TAIL_OMEGA * heavy;

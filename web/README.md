@@ -121,6 +121,8 @@ import { attach } from './src/index.js';
 attach({ selector: 'button, .btn', snapshot: async () => await html2canvas(document.body) });
 ```
 
+Tugma ustiga kursor kelganda shisha biroz kattalashadi (hover), bosilganda ko'proq. Sahifa surilganda shisha asl elementlarga zudlik bilan ergashadi, surilish tugagach surat qayta olinadi.
+
 Sozlamalar: `selector`, `exclude`, `maxShapes` (standart 128, eng ko'pi 256), `minSize`, `params` (glass.params), `labelContrast`.
 Native (HTML'siz) oynalarda ishlamaydi. Cheklov: bir vaqtda 256 tagacha element (standart 128); sahifa surati har o'zgarishda qayta olinadi (~100 ms).
 
