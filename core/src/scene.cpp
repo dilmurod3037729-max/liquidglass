@@ -138,6 +138,7 @@ PassUniforms Scene::pack(Pass pass, float dpr) const {
         o[8] = s.d.radius * g * dpr;
         o[9] = reach(i) * dpr;
         o[10] = ((pass == Pass::Front) == isFront(i)) ? 1.0f : 0.0f;
+        o[11] = std::hypot(s.x - s.ex, s.y - s.ey) * dpr;   // 0 = qo'zg'almas: shader uzoqda bo'lsa o'tkazib yuboradi
         std::copy(s.d.tint, s.d.tint + 4, o + 12);
     }
     u.merge = params.merge * dpr;

@@ -148,3 +148,14 @@ MIT, `LICENSE` fayliga qarang.
 Bir namuna (RTX 2080 SUPER, 1400x800, `glass` rejimi): sudrash paytida GPU o'rtacha ~19-22%, eng yuqorisi 35-37%; tinch holatda
 sahifa **0 ta kadr** chizadi. Tinch holatdagi GPU foizi brauzer/kompozitor va boshqa ilovalarni ham o'z ichiga oladi, shuning uchun
 asosiy ko'rsatkich "tinch 5 soniyada chizilgan kadrlar soni". Raqamlar qurilmaga bog'liq, o'z kompyuteringizda ishga tushirib ko'ring.
+
+### Shakllar soniga qarab kadr vaqti
+
+`node tests/bench-shapes.mjs` har kadrni `readPixels` bilan GPU tugaguncha kutib o'lchaydi (RTX 2080 SUPER, 1400x800, dpr 1, qo'zg'almas shakllar):
+
+| Shakllar | 5 | 50 | 128 | 256 |
+|---|---|---|---|---|
+| Kadr vaqti | ~2 ms | ~5 ms | ~7 ms | ~16 ms |
+
+Sabab: shader har pikselda shakllar ro'yxatini aylanadi (uzoqdagi qo'zg'almas shakllar arzon o'tkazib yuboriladi). Kadr faqat o'zgarganda chiziladi,
+shuning uchun ko'p tugmali sahifada ham doimiy yuk yo'q. Yengil kompyuterlarda `maxShapes` ni kamaytiring.

@@ -23,7 +23,7 @@ struct Params {
 enum class Pass { Back, Front };
 
 // Bir o'tish uchun GPU'ga yuboriladigan ma'lumot. Shakllar RGBA32F teksturaga yoziladi (kenglik 4, balandlik = count):
-//   shape i: [0] rect(4) [1] tail(4) [2] rad, k, act, 0 [3] tint(4)   -> shapes[i*16 + piksel*4 + komponent]
+//   shape i: [0] rect(4) [1] tail(4) [2] rad, k, act, cho'zilish [3] tint(4)   -> shapes[i*16 + piksel*4 + komponent]
 struct PassUniforms {
     int   count;
     float shapes[kMaxShapes * 16];

@@ -163,6 +163,7 @@ export class Scene {
       u.data[o + 8] = s.radius * g * dpr;
       u.data[o + 9] = this.#reach(s) * dpr;
       u.data[o + 10] = (pass === 'front') === this.isFront(i) ? 1 : 0;
+      u.data[o + 11] = Math.hypot(s.x - s.ex, s.y - s.ey) * dpr;   // 0 = qo'zg'almas: shader uzoqda bo'lsa o'tkazib yuboradi
       u.data.set(s.tint, o + 12);
     });
     Object.assign(u, pass === 'back'

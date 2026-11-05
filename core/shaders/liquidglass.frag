@@ -5,7 +5,7 @@ precision highp float;
 uniform sampler2D uBg;
 // Shakllar ma'lumot teksturasida (RGBA32F, kenglik 4, balandlik = shakllar soni). Har shakl 4 ta piksel:
 //   [0] rect: markaz.xy, yarim o'lcham.xy   [1] tail: kechikkan dum markazi.xy
-//   [2] meta: burchak radiusi, maks. cho'zilish, faol(1/0)   [3] tint: rgb + kuch
+//   [2] meta: burchak radiusi, maks. cho'zilish, faol(1/0), joriy cho'zilish (px)   [3] tint: rgb + kuch
 uniform sampler2D uShapes;
 uniform int   uCount;
 uniform vec2  uRes;
@@ -55,7 +55,7 @@ float sdAll(vec2 p){
     if (mt.z < 0.5) continue;
     vec4 r = shp(i, 0);
     // Uzoqdagi QO'ZG'ALMAS shaklni hisoblamaymiz: silliq birlashma radiusidan tashqarida u natijaga ta'sir qilmaydi
-    if (length(r.xy - shp(i, 1).xy) < 0.5) {
+    if (mt.w < 0.5) {   // qo'zg'almas (cho'zilmagan)
       float bd = length(max(abs(p - r.xy) - r.zw, 0.0));
       if (bd > d + max(uMerge, 0.5)) continue;
     }
