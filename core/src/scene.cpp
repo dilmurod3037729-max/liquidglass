@@ -134,22 +134,26 @@ int Scene::hit(Vec2 p) const {
 }
 
 PassUniforms Scene::pack(Pass pass, float dpr) const {
+    // Faqat shu o'tishda chiziladigan shakllar yoziladi (zich): shader nofaol shakllarni aylanib chiqmaydi
     PassUniforms u{};
-    u.count = count();
+    int j = 0;
     for (int i = 0; i < count(); i++) {
+        if ((pass == Pass::Front) != isFront(i)) continue;
         const Shape& s = s_[i];
         const float g = grow(s);
         const float r[4] = {s.x * dpr, s.y * dpr, s.d.w / 2 * g * dpr, s.d.h / 2 * g * dpr};
         const float t[4] = {s.ex * dpr, s.ey * dpr, r[2], r[3]};
-        float* o = u.shapes + i * 16;
+        float* o = u.shapes + j * 16;
         std::copy(r, r + 4, o);
         std::copy(t, t + 4, o + 4);
         o[8] = s.d.radius * g * dpr;
         o[9] = reach(i) * dpr;
-        o[10] = ((pass == Pass::Front) == isFront(i)) ? 1.0f : 0.0f;
+        o[10] = 1.0f;
         o[11] = std::hypot(s.x - s.ex, s.y - s.ey) * dpr;   // 0 = qo'zg'almas: shader uzoqda bo'lsa o'tkazib yuboradi
         std::copy(s.d.tint, s.d.tint + 4, o + 12);
+        j++;
     }
+    u.count = j;
     u.merge = params.merge * dpr;
     if (pass == Pass::Back) { u.flip = 0; u.shadowK = 0.30f; u.shadowOff = 7;  u.specMul = 0.5f; u.thickMul = 0.75f; u.extraLod = 0; }
     else                    { u.flip = 1; u.shadowK = 0.55f; u.shadowOff = 26; u.specMul = 1.0f; u.thickMul = 1.0f;  u.extraLod = 0.7f; }

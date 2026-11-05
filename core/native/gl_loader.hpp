@@ -29,6 +29,8 @@
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_RGBA8 0x8058
 #define GL_RGBA32F 0x8814
+#define GL_R32F 0x822E
+#define GL_RED 0x1903
 typedef char GLchar;
 #endif
 

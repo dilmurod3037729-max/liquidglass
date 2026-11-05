@@ -38,6 +38,6 @@ test('pack: shakl soni va qatlam ajratish', () => {
   s.add({ w: 100, h: 60, radius: 30 }, { x: 0, y: 0 });
   s.add({ w: 100, h: 60, radius: 30 }, { x: 200, y: 0 });
   const f = s.pack('front', 1), b = s.pack('back', 1);
-  assert.equal(f.data[10], 1); assert.equal(f.data[26], 0);
-  assert.equal(b.data[10], 0); assert.equal(b.data[26], 1);
+  assert.equal(f.count, 1); assert.equal(b.count, 1);   // har o'tishda faqat o'z shakllari
+  assert.equal(f.data[0], 0); assert.equal(b.data[0], 200);   // oldingi: 0-shakl (x=0), orqadagi: 1-shakl (x=200)
 });

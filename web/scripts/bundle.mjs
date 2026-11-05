@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const order = ['shader.js', 'scene.js', 'renderer.js', 'glass.js', 'fluid.js', 'water.js', 'dom.js', 'index.js'];
+const order = ['shader.js', 'scene.js', 'tiles.js', 'renderer.js', 'glass.js', 'fluid.js', 'water.js', 'dom.js', 'index.js'];
 let out = '(function(){\nconst __lg = {};\n';
 for (const f of order) {
   let s = readFileSync(join(root, 'src', f), 'utf8');

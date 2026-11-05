@@ -1,6 +1,7 @@
 import { VERTEX, FRAGMENT } from './shader.js';
+import { buildTiles } from './tiles.js';
 
-const UNIFORMS = ['uBg', 'uShapes', 'uCount', 'uRes', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
+const UNIFORMS = ['uBg', 'uShapes', 'uCount', 'uTiles', 'uTileSize', 'uGridW', 'uGridH', 'uRes', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
   'uSpecMul', 'uThickMul', 'uExtraLod', 'uLight', 'uIOR', 'uThick', 'uBevel', 'uDisp', 'uBlur', 'uSpec', 'uAbs'];
 
 function compile(gl, type, src) {
@@ -36,6 +37,12 @@ export class Renderer {
     this.sceneTex = gl.createTexture();
     this.fbTex = gl.createTexture();
     this.fbo = gl.createFramebuffer();
+    this.tilesTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.tilesTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.shapesTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.shapesTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -86,24 +93,45 @@ export class Renderer {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, Math.max(u.count, 1), 0, gl.RGBA, gl.FLOAT, u.data);
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(loc.uShapes, 2); gl.uniform1i(loc.uCount, u.count);
+      // yaqin shakllar ro'yxati (bo'laklar bo'yicha). Shakl kam bo'lsa foydasi yo'q: bo'laklarsiz (uTileSize = 0)
+      if (u.count >= 12) {
+        const t = buildTiles(u, canvas.width, canvas.height, dpr);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, this.tilesTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, t.cap + 1, t.gw * t.gh, 0, gl.RED, gl.FLOAT, t.data);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(loc.uTiles, 3); gl.uniform1f(loc.uTileSize, t.tile); gl.uniform1i(loc.uGridW, t.gw); gl.uniform1i(loc.uGridH, t.gh);
+      } else {
+        gl.uniform1i(loc.uTiles, 3); gl.uniform1f(loc.uTileSize, 0); gl.uniform1i(loc.uGridW, 1); gl.uniform1i(loc.uGridH, 1);
+      }
       gl.uniform1f(loc.uMerge, u.merge); gl.uniform1f(loc.uFlip, u.flip);
       gl.uniform1f(loc.uShadowK, u.shadowK); gl.uniform1f(loc.uShadowOff, u.shadowOff);
       gl.uniform1f(loc.uSpecMul, u.specMul); gl.uniform1f(loc.uThickMul, u.thickMul); gl.uniform1f(loc.uExtraLod, u.extraLod);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
+    const back = scene.pack('back', dpr);
+    const front = scene.pack('front', dpr);
+    if (back.count === 0) {
+      // Orqada shisha yo'q: FBO sahna nusxasi bo'lardi. O'tish va mipmap'ni o'tkazib, sahnaning o'zini sindiramiz.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
+      front.flip = 0;
+      pass(front);
+      return;
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
-    pass(scene.pack('back', dpr));
+    pass(back);
     gl.bindTexture(gl.TEXTURE_2D, this.fbTex);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    pass(scene.pack('front', dpr));
+    pass(front);
   }
 
   dispose() {
     const { gl } = this;
-    gl.deleteTexture(this.sceneTex); gl.deleteTexture(this.fbTex); gl.deleteTexture(this.shapesTex); gl.deleteFramebuffer(this.fbo);
+    gl.deleteTexture(this.sceneTex); gl.deleteTexture(this.fbTex); gl.deleteTexture(this.shapesTex); gl.deleteTexture(this.tilesTex); gl.deleteFramebuffer(this.fbo);
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }

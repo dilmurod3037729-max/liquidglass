@@ -20,8 +20,9 @@ public:
 private:
     void setPass(const PassUniforms& u);
 
-    unsigned prog_ = 0, vao_ = 0, sceneTex_ = 0, fbTex_ = 0, shapesTex_ = 0, fbo_ = 0;
+    unsigned prog_ = 0, vao_ = 0, sceneTex_ = 0, fbTex_ = 0, shapesTex_ = 0, tilesTex_ = 0, fbo_ = 0;
     int w_ = 0, h_ = 0;
+    float dpr_ = 1.0f;
     int loc_[40] = {};
 };
 

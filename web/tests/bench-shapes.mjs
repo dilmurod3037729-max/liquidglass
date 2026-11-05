@@ -38,6 +38,10 @@ try {
       }
       measure();
     }
+    // Ilova adapteri holati: hamma shakl oldingi qatlamda (orqa o'tish o'tkazib yuboriladi)
+    g.scene.s.forEach((x) => { x.draggable = false; });
+    measure();
+    res[res.length - 1].rejim = 'hammasi oldinda (adapter)';
     return res;
   })()`);
   console.log(JSON.stringify(out));

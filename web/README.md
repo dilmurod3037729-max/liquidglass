@@ -157,7 +157,8 @@ asosiy ko'rsatkich "tinch 5 soniyada chizilgan kadrlar soni". Raqamlar qurilmaga
 
 | Shakllar | 5 | 50 | 128 | 256 |
 |---|---|---|---|---|
-| Kadr vaqti | ~2 ms | ~5 ms | ~7 ms | ~16 ms |
+| Kadr vaqti | ~1.9 ms | ~3.0 ms | ~3.5 ms | ~2.6 ms |
 
-Sabab: shader har pikselda shakllar ro'yxatini aylanadi (uzoqdagi qo'zg'almas shakllar arzon o'tkazib yuboriladi). Kadr faqat o'zgarganda chiziladi,
-shuning uchun ko'p tugmali sahifada ham doimiy yuk yo'q. Yengil kompyuterlarda `maxShapes` ni kamaytiring.
+Ekran 32 pikselli bo'laklarga bo'linadi va har bo'lak uchun faqat unga yaqin shakllar ro'yxati beriladi (R32F tekstura), shuning uchun
+shakllar soni ko'paysa ham narx deyarli o'smaydi (bo'laklarsiz 256 shaklda ~16 ms edi). Orqada shisha bo'lmasa (ilova adapteri) orqa o'tish
+butunlay o'tkazib yuboriladi. Kadr faqat o'zgarganda chiziladi.

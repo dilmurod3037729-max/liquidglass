@@ -160,16 +160,17 @@ export class Scene {
    * shakl i: [0] rect(4) [1] tail(4) [2] rad, k, act, 0 [3] tint(4) -> data[i*16 + piksel*4 + komponent]
    */
   pack(pass, dpr) {
-    const n = this.s.length;
-    const u = { count: n, data: new Float32Array(Math.max(n, 1) * 16), merge: this.params.merge * dpr };
-    this.s.forEach((s, i) => {
-      const g = this.#grow(s);
-      const o = i * 16;
+    // Faqat shu o'tishda chiziladigan shakllar yoziladi (zich): shader nofaol shakllarni aylanib chiqmaydi
+    const idx = [];
+    this.s.forEach((_, i) => { if ((pass === 'front') === this.isFront(i)) idx.push(i); });
+    const u = { count: idx.length, data: new Float32Array(Math.max(idx.length, 1) * 16), merge: this.params.merge * dpr };
+    idx.forEach((i, j) => {
+      const s = this.s[i], g = this.#grow(s), o = j * 16;
       u.data.set([s.x * dpr, s.y * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], o);
       u.data.set([s.ex * dpr, s.ey * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], o + 4);
       u.data[o + 8] = s.radius * g * dpr;
       u.data[o + 9] = this.#reach(s) * dpr;
-      u.data[o + 10] = (pass === 'front') === this.isFront(i) ? 1 : 0;
+      u.data[o + 10] = 1;
       u.data[o + 11] = Math.hypot(s.x - s.ex, s.y - s.ey) * dpr;   // 0 = qo'zg'almas: shader uzoqda bo'lsa o'tkazib yuboradi
       u.data.set(s.tint, o + 12);
     });

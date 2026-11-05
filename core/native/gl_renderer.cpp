@@ -1,5 +1,6 @@
 #include "gl_renderer.hpp"
 #include "gl_loader.hpp"
+#include "liquidglass/tiles.hpp"
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -9,9 +10,9 @@ namespace lg {
 namespace {
 
 // shader'dagi uniform nomlari (tartib U enum bilan mos)
-enum U { Bg, Shapes, Count_, Res, Dpr, Merge, Flip, ShadowK, ShadowOff, SpecMul, ThickMul, ExtraLod, Light,
+enum U { Bg, Shapes, Count_, Tiles, TileSize, GridW, GridH, Res, Dpr, Merge, Flip, ShadowK, ShadowOff, SpecMul, ThickMul, ExtraLod, Light,
          IOR, Thick, Bevel, Disp, Blur, Spec, Abs, Count };
-const char* kNames[Count] = {"uBg", "uShapes", "uCount", "uRes", "uDpr", "uMerge", "uFlip",
+const char* kNames[Count] = {"uBg", "uShapes", "uCount", "uTiles", "uTileSize", "uGridW", "uGridH", "uRes", "uDpr", "uMerge", "uFlip",
                              "uShadowK", "uShadowOff", "uSpecMul", "uThickMul", "uExtraLod", "uLight",
                              "uIOR", "uThick", "uBevel", "uDisp", "uBlur", "uSpec", "uAbs"};
 
@@ -62,6 +63,7 @@ GlRenderer::~GlRenderer() {
     if (sceneTex_) glDeleteTextures(1, &sceneTex_);
     if (fbTex_) glDeleteTextures(1, &fbTex_);
     if (shapesTex_) glDeleteTextures(1, &shapesTex_);
+    if (tilesTex_) glDeleteTextures(1, &tilesTex_);
 }
 
 bool GlRenderer::init(const std::string& fragPath, std::string& err) {
@@ -95,6 +97,12 @@ bool GlRenderer::init(const std::string& fragPath, std::string& err) {
     gl::GenVertexArrays(1, &vao_);
     glGenTextures(1, &sceneTex_);
     glGenTextures(1, &fbTex_);
+    glGenTextures(1, &tilesTex_);
+    glBindTexture(GL_TEXTURE_2D, tilesTex_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glGenTextures(1, &shapesTex_);
     glBindTexture(GL_TEXTURE_2D, shapesTex_);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -132,6 +140,24 @@ void GlRenderer::setPass(const PassUniforms& u) {
     gl::ActiveTexture(GL_TEXTURE0);
     gl::Uniform1i(loc_[Shapes], 2);
     gl::Uniform1i(loc_[Count_], u.count);
+    // yaqin shakllar ro'yxati (bo'laklar bo'yicha); shakl kam bo'lsa bo'laklarsiz
+    gl::ActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_2D, tilesTex_);
+    gl::Uniform1i(loc_[Tiles], 3);
+    if (u.count >= 12) {
+        const TileGrid t = buildTiles(u, w_, h_, dpr_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, t.cap + 1, t.gw * t.gh, 0, GL_RED, GL_FLOAT, t.data.data());
+        gl::Uniform1f(loc_[TileSize], float(t.tile));
+        gl::Uniform1i(loc_[GridW], t.gw);
+        gl::Uniform1i(loc_[GridH], t.gh);
+    } else {
+        const float zero = 0;
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1, 1, 0, GL_RED, GL_FLOAT, &zero);
+        gl::Uniform1f(loc_[TileSize], 0.0f);
+        gl::Uniform1i(loc_[GridW], 1);
+        gl::Uniform1i(loc_[GridH], 1);
+    }
+    gl::ActiveTexture(GL_TEXTURE0);
     gl::Uniform1f(loc_[Merge], u.merge);
     gl::Uniform1f(loc_[Flip], u.flip);
     gl::Uniform1f(loc_[ShadowK], u.shadowK);
@@ -143,6 +169,7 @@ void GlRenderer::setPass(const PassUniforms& u) {
 }
 
 void GlRenderer::render(const Scene& scene, float dpr, Vec2 light, unsigned target) {
+    dpr_ = dpr;
     const Params& p = scene.params;
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
@@ -161,16 +188,26 @@ void GlRenderer::render(const Scene& scene, float dpr, Vec2 light, unsigned targ
     gl::Uniform1f(loc_[Spec], p.spec);
     gl::Uniform1f(loc_[Abs], p.absorb);
 
+    PassUniforms back = scene.pack(Pass::Back, dpr);
+    PassUniforms front = scene.pack(Pass::Front, dpr);
+    gl::ActiveTexture(GL_TEXTURE0);
+    if (back.count == 0) {
+        // Orqada shisha yo'q: FBO sahna nusxasi bo'lardi. O'tish va mipmap'ni o'tkazib, sahnaning o'zini sindiramiz.
+        gl::BindFramebuffer(GL_FRAMEBUFFER, target);
+        glBindTexture(GL_TEXTURE_2D, sceneTex_);
+        front.flip = 0;
+        setPass(front);
+        return;
+    }
     // 1-o'tish: sahna + orqadagi shakllar -> FBO
     gl::BindFramebuffer(GL_FRAMEBUFFER, fbo_);
-    gl::ActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sceneTex_);
-    setPass(scene.pack(Pass::Back, dpr));
+    setPass(back);
     glBindTexture(GL_TEXTURE_2D, fbTex_);
     gl::GenerateMipmap(GL_TEXTURE_2D);
     // 2-o'tish: FBO + oldingi shisha -> maqsad
     gl::BindFramebuffer(GL_FRAMEBUFFER, target);
-    setPass(scene.pack(Pass::Front, dpr));
+    setPass(front);
 }
 
 }  // namespace lg

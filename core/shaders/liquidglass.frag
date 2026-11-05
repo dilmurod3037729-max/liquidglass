@@ -8,6 +8,11 @@ uniform sampler2D uBg;
 //   [2] meta: burchak radiusi, maks. cho'zilish, faol(1/0), joriy cho'zilish (px)   [3] tint: rgb + kuch
 uniform sampler2D uShapes;
 uniform int   uCount;
+// Bo'laklar (tile): ekran uTileSize pikselli bo'laklarga bo'lingan. uTiles (R32F, kenglik cap+1, balandlik = bo'laklar soni):
+// [0] = shu bo'lakka yaqin shakllar soni (-1 = ro'yxat to'lib ketdi, hammasi aylanib chiqiladi), [1..] = shakl indekslari.
+uniform sampler2D uTiles;
+uniform float uTileSize;   // 0 = bo'laklarsiz (hamma shakl)
+uniform int   uGridW, uGridH;
 uniform vec2  uRes;
 uniform float uDpr, uMerge, uFlip, uShadowK, uShadowOff, uSpecMul, uThickMul, uExtraLod;
 uniform vec2  uLight;
@@ -50,7 +55,16 @@ float sdDrop(vec2 p, int i){
 float sdAll(vec2 p){
   float d = 1e5, bm = 1e5;
   vec4 bt = vec4(0.0);
-  for (int i = 0; i < uCount; i++){
+  bool all = uTileSize < 1.0;
+  int tid = 0, n = uCount;
+  if (!all) {
+    vec2 tc = clamp(floor(p / uTileSize), vec2(0.0), vec2(float(uGridW - 1), float(uGridH - 1)));
+    tid = int(tc.y) * uGridW + int(tc.x);
+    float cnt = texelFetch(uTiles, ivec2(0, tid), 0).r;
+    if (cnt < -0.5) all = true; else n = int(cnt + 0.5);
+  }
+  for (int k = 0; k < n; k++){
+    int i = all ? k : int(texelFetch(uTiles, ivec2(k + 1, tid), 0).r + 0.5);
     vec4 mt = shp(i, 2);
     if (mt.z < 0.5) continue;
     vec4 r = shp(i, 0);
