@@ -21,7 +21,7 @@ test('JS yadro C++ yadro bilan mos (oltin test)', () => {
     if (f % 10 === 9) {
       const u = s.pack('front', 1);
       rows.push({ f, ax: s.position(a).x, ay: s.position(a).y, bx: s.position(b).x, by: s.position(b).y, sa: s.scale(a), sb: s.scale(b),
-        da: s.depth(a), sdf: s.sdf({ x: 480, y: 340 }, 'front'), rect1: u.rect[4], tail1: u.tail[4], k1: u.k[1] });
+        da: s.depth(a), sdf: s.sdf({ x: 480, y: 340 }, 'front'), rect1: u.data[16], tail1: u.data[20], k1: u.data[25] });
     }
   }
   assert.equal(rows.length, golden.length);
@@ -38,6 +38,6 @@ test('pack: shakl soni va qatlam ajratish', () => {
   s.add({ w: 100, h: 60, radius: 30 }, { x: 0, y: 0 });
   s.add({ w: 100, h: 60, radius: 30 }, { x: 200, y: 0 });
   const f = s.pack('front', 1), b = s.pack('back', 1);
-  assert.equal(f.act[0], 1); assert.equal(f.act[1], 0);
-  assert.equal(b.act[0], 0); assert.equal(b.act[1], 1);
+  assert.equal(f.data[10], 1); assert.equal(f.data[26], 0);
+  assert.equal(b.data[10], 0); assert.equal(b.data[26], 1);
 });

@@ -20,7 +20,7 @@ float sdAll(vec2 p){
   return clamp((uT - r0) / max(length(g), 1e-3), -80.0, 80.0);
 }
 `;
-  return (FRAGMENT.slice(0, a) + field + FRAGMENT.slice(b)).replace('uniform float uAct[N];', 'uniform float uAct[N];\nuniform sampler2D uField;\nuniform float uT;');
+  return (FRAGMENT.slice(0, a) + field + FRAGMENT.slice(b)).replace('uniform sampler2D uBg;', 'uniform sampler2D uBg;\nuniform sampler2D uField;\nuniform float uT;');
 }
 
 function compile(gl, type, src) {

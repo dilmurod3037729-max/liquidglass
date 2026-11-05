@@ -2,7 +2,7 @@
 
 namespace lg {
 
-constexpr int kMaxShapes = 32;   // shaders/liquidglass.frag dagi `#define N` bilan bir xil
+constexpr int kMaxShapes = 256;   // shaders/liquidglass.frag dagi `#define N` bilan bir xil
 
 struct Vec2 { float x = 0, y = 0; };
 
@@ -22,15 +22,20 @@ struct Params {
 
 enum class Pass { Back, Front };
 
-// Bir o'tish uchun GPU'ga yuboriladigan massivlar (nomlar shaderdagi uniform'larga mos)
+// Bir o'tish uchun GPU'ga yuboriladigan ma'lumot. Shakllar RGBA32F teksturaga yoziladi (kenglik 4, balandlik = count):
+//   shape i: [0] rect(4) [1] tail(4) [2] rad, k, act, 0 [3] tint(4)   -> shapes[i*16 + piksel*4 + komponent]
 struct PassUniforms {
-    float rect[kMaxShapes * 4];   // markaz.xy, yarim o'lcham.xy (qurilma pikseli)
-    float tail[kMaxShapes * 4];   // kechikkan "dum"
-    float rad[kMaxShapes];
-    float k[kMaxShapes];          // dum bilan birlashish radiusi
-    float act[kMaxShapes];        // 1 = shu o'tishda chiziladi
-    float tint[kMaxShapes * 4];   // rgb + kuch
+    int   count;
+    float shapes[kMaxShapes * 16];
     float merge, flip, shadowK, shadowOff, specMul, thickMul, extraLod;
+
+    // qulaylik uchun o'qish funksiyalari (testlar va backendlar)
+    const float* rect(int i) const { return shapes + i * 16; }
+    const float* tail(int i) const { return shapes + i * 16 + 4; }
+    float rad(int i) const { return shapes[i * 16 + 8]; }
+    float k(int i) const { return shapes[i * 16 + 9]; }
+    float act(int i) const { return shapes[i * 16 + 10]; }
+    const float* tint(int i) const { return shapes + i * 16 + 12; }
 };
 
 }  // namespace lg

@@ -19,7 +19,7 @@ Backend har kadrda: `scene.step(dt)` -> `true` bo'lsa chiz, `false` bo'lsa kadrn
     cmake --build build --config Release
     build\Release\test_scene.exe
 
-Vizual namuna: ../web/demo/ (veb) va quyidagi native demo.
+Namuna (vizual): `..\qbit-liquid-glass\liquid-glass-webgl\proto2.html`
 
 ## Native backend (OpenGL 3.3 + GLFW + Dear ImGui)
 

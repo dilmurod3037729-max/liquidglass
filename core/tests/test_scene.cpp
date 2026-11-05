@@ -87,8 +87,8 @@ int main() {
     CHECK(sc.hit(sc.position(cap)) == cap);
     CHECK(sc.hit({5000, 5000}) == -1);
     const PassUniforms f = sc.pack(Pass::Front, 2.0f), bk = sc.pack(Pass::Back, 2.0f);
-    CHECK(f.act[cap] == 1.0f && f.act[card] == 0.0f && bk.act[card] == 1.0f && bk.act[cap] == 0.0f);
-    CHECK(std::fabs(f.rect[cap * 4] - sc.position(cap).x * 2) < 1e-3f);
+    CHECK(f.act(cap) == 1.0f && f.act(card) == 0.0f && bk.act(card) == 1.0f && bk.act(cap) == 0.0f);
+    CHECK(std::fabs(f.rect(cap)[0] - sc.position(cap).x * 2) < 1e-3f);
     CHECK(f.flip == 1.0f && bk.flip == 0.0f && f.shadowOff > bk.shadowOff);
 
     // Bosilish kattalashtiradi, qo'yib yuborilsa qaytadi

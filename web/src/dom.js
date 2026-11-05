@@ -3,7 +3,7 @@ import { LiquidGlass } from './glass.js';
 const DEFAULTS = {
   selector: 'button, [role="button"]',   // qaysi elementlar shisha bo'lsin
   exclude: '',                           // shu selektorga mos kelganlar o'tkazib yuboriladi
-  maxShapes: 32,                         // bir vaqtda (GPU uniform chegarasi: 32)
+  maxShapes: 128,                        // bir vaqtda (kattaroq = sekinroq; shakllar ma'lumot teksturasida, chegara 256)
   minSize: [28, 24],                     // bundan kichik elementlar o'tkazib yuboriladi (px)
   params: {},                            // glass.params ga beriladi (bevel, thick, ...)
   labelContrast: true,

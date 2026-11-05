@@ -20,7 +20,7 @@ int main() {
             const PassUniforms u = s.pack(Pass::Front, 1.0f);
             std::printf("%s{\"f\":%d,\"ax\":%.6f,\"ay\":%.6f,\"bx\":%.6f,\"by\":%.6f,\"sa\":%.6f,\"sb\":%.6f,\"da\":%.6f,\"sdf\":%.6f,\"rect1\":%.6f,\"tail1\":%.6f,\"k1\":%.6f}",
                         f == 9 ? "" : ",", f, s.position(a).x, s.position(a).y, s.position(b).x, s.position(b).y,
-                        s.scale(a), s.scale(b), s.depth(a), s.sdf({480, 340}, Pass::Front), u.rect[4], u.tail[4], u.k[1]);
+                        s.scale(a), s.scale(b), s.depth(a), s.sdf({480, 340}, Pass::Front), u.rect(1)[0], u.tail(1)[0], u.k(1));
         }
     }
     std::printf("]\n");

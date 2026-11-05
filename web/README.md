@@ -121,14 +121,14 @@ import { attach } from './src/index.js';
 attach({ selector: 'button, .btn', snapshot: async () => await html2canvas(document.body) });
 ```
 
-Sozlamalar: `selector`, `exclude`, `maxShapes` (eng ko'pi 32), `minSize`, `params` (glass.params), `labelContrast`.
-Native (HTML'siz) oynalarda ishlamaydi. Cheklov: bir vaqtda 32 tagacha element; sahifa surati har o'zgarishda qayta olinadi (~100 ms).
+Sozlamalar: `selector`, `exclude`, `maxShapes` (standart 128, eng ko'pi 256), `minSize`, `params` (glass.params), `labelContrast`.
+Native (HTML'siz) oynalarda ishlamaydi. Cheklov: bir vaqtda 256 tagacha element (standart 128); sahifa surati har o'zgarishda qayta olinadi (~100 ms).
 
 ## Cheklovlar (halol)
 
 - **DOM'ni sindirmaydi.** WebGL sahifadagi oddiy HTML'ni o'qiy olmaydi. Sindiriladigan narsa `source` ga
   (canvas/rasm/video) berilishi kerak. Shisha ustidagi yozuv (`labelElement`) esa oddiy HTML.
-- `glass` rejimida eng ko'pi bilan 32 ta shakl, yumaloq burchakli to'rtburchaklar.
+- `glass` rejimida eng ko'pi bilan 256 ta shakl (ma'lumot teksturasida), yumaloq burchakli to'rtburchaklar. Yaqin shakllar qo'shilishi uchun `params.merge` ni kamaytiring.
 - Suv rejimida hozircha oldingi/orqadagi oyna qatlami yo'q.
 - Shisha butun ekran canvas'i orqali chiziladi (hozircha `fixed`, ekran o'lchamida).
 

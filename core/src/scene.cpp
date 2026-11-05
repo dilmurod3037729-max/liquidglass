@@ -126,17 +126,19 @@ int Scene::hit(Vec2 p) const {
 
 PassUniforms Scene::pack(Pass pass, float dpr) const {
     PassUniforms u{};
+    u.count = count();
     for (int i = 0; i < count(); i++) {
         const Shape& s = s_[i];
         const float g = grow(s);
         const float r[4] = {s.x * dpr, s.y * dpr, s.d.w / 2 * g * dpr, s.d.h / 2 * g * dpr};
         const float t[4] = {s.ex * dpr, s.ey * dpr, r[2], r[3]};
-        std::copy(r, r + 4, u.rect + i * 4);
-        std::copy(t, t + 4, u.tail + i * 4);
-        u.rad[i] = s.d.radius * g * dpr;
-        u.k[i] = reach(i) * dpr;
-        u.act[i] = ((pass == Pass::Front) == isFront(i)) ? 1.0f : 0.0f;
-        std::copy(s.d.tint, s.d.tint + 4, u.tint + i * 4);
+        float* o = u.shapes + i * 16;
+        std::copy(r, r + 4, o);
+        std::copy(t, t + 4, o + 4);
+        o[8] = s.d.radius * g * dpr;
+        o[9] = reach(i) * dpr;
+        o[10] = ((pass == Pass::Front) == isFront(i)) ? 1.0f : 0.0f;
+        std::copy(s.d.tint, s.d.tint + 4, o + 12);
     }
     u.merge = params.merge * dpr;
     if (pass == Pass::Back) { u.flip = 0; u.shadowK = 0.30f; u.shadowOff = 7;  u.specMul = 0.5f; u.thickMul = 0.75f; u.extraLod = 0; }

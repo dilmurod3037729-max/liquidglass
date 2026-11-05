@@ -2,19 +2,19 @@
 // Ikki o'tish: orqa qatlam (uFlip=0) -> FBO, oldingi qatlam (uFlip=1) FBO'ni sindiradi.
 #version 300 es
 precision highp float;
-#define N 32   // LG_MAX_SHAPES bilan bir xil bo'lishi shart
 uniform sampler2D uBg;
+// Shakllar ma'lumot teksturasida (RGBA32F, kenglik 4, balandlik = shakllar soni). Har shakl 4 ta piksel:
+//   [0] rect: markaz.xy, yarim o'lcham.xy   [1] tail: kechikkan dum markazi.xy
+//   [2] meta: burchak radiusi, maks. cho'zilish, faol(1/0)   [3] tint: rgb + kuch
+uniform sampler2D uShapes;
+uniform int   uCount;
 uniform vec2  uRes;
-uniform vec4  uRect[N];
-uniform vec4  uTail[N];
-uniform float uRad[N];
-uniform float uK[N];
-uniform float uAct[N];
-uniform vec4  uTint[N];   // rgb + kuch (0 = tiniq shisha)
 uniform float uDpr, uMerge, uFlip, uShadowK, uShadowOff, uSpecMul, uThickMul, uExtraLod;
 uniform vec2  uLight;
 uniform float uIOR, uThick, uBevel, uDisp, uBlur, uSpec, uAbs;
 out vec4 outColor;
+
+vec4 shp(int i, int k){ return texelFetch(uShapes, ivec2(k, i), 0); }
 
 float sdRR(vec2 p, vec2 b, float r){
   vec2 q = abs(p) - b + r;
@@ -29,10 +29,11 @@ vec4  gTint = vec4(0.0);
 // yuzani saqlash uchun enini toraytiradi va orqa tomonini uchiga qarab ingichkalashtiradi (tomchi shakli).
 // uK[i] = maksimal cho'zilish (piksel). Nusxa/ikkinchi jism YO'Q.
 float sdDrop(vec2 p, int i){
-  vec4 r = uRect[i];
-  vec2 d = r.xy - uTail[i].xy;
+  vec4 r = shp(i, 0);
+  vec4 mt = shp(i, 2);
+  vec2 d = r.xy - shp(i, 1).xy;
   float len = length(d);
-  float m = clamp(len / max(uK[i], 1.0), 0.0, 1.0);
+  float m = clamp(len / max(mt.y, 1.0), 0.0, 1.0);
   vec2 u = len > 1e-3 ? d / len : vec2(1.0, 0.0);
   vec2 q = p - (r.xy - u * (0.30 * len));
   float a = dot(q, u), b = dot(q, vec2(-u.y, u.x));
@@ -42,17 +43,24 @@ float sdDrop(vec2 p, int i){
   float taper = 1.0 + 1.8 * m * rear;
   float a2 = a / sS, b2 = b * sqrt(sS) * taper;
   vec2 p2 = vec2(a2 * u.x - b2 * u.y, a2 * u.y + b2 * u.x);
-  float rr = mix(min(uRad[i], min(r.z, r.w)), min(r.z, r.w), clamp(m * 1.2, 0.0, 1.0));   // cho'zilganda to'liq yumaloq (kapsula)
+  float rr = mix(min(mt.x, min(r.z, r.w)), min(r.z, r.w), clamp(m * 1.2, 0.0, 1.0));   // cho'zilganda to'liq yumaloq (kapsula)
   return sdRR(p2, r.zw, rr) / (1.0 + 0.7 * 1.8 * m * rear);
 }
 // Qatlamdagi barcha tomchilarning umumiy maydoni: yaqinlashganda suyuqdek qo'shiladi.
 float sdAll(vec2 p){
   float d = 1e5, bm = 1e5;
   vec4 bt = vec4(0.0);
-  for (int i = 0; i < N; i++){
-    if (uAct[i] < 0.5) continue;
+  for (int i = 0; i < uCount; i++){
+    vec4 mt = shp(i, 2);
+    if (mt.z < 0.5) continue;
+    vec4 r = shp(i, 0);
+    // Uzoqdagi QO'ZG'ALMAS shaklni hisoblamaymiz: silliq birlashma radiusidan tashqarida u natijaga ta'sir qilmaydi
+    if (length(r.xy - shp(i, 1).xy) < 0.5) {
+      float bd = length(max(abs(p - r.xy) - r.zw, 0.0));
+      if (bd > d + max(uMerge, 0.5)) continue;
+    }
     float di = sdDrop(p, i);
-    if (di < d) { bm = min(uRect[i].z, uRect[i].w); bt = uTint[i]; }
+    if (di < d) { bm = min(r.z, r.w); bt = shp(i, 3); }
     d = smin(d, di, max(uMerge, 0.5));
   }
   gMin = bm;

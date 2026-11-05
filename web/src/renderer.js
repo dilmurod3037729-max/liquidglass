@@ -1,6 +1,6 @@
 import { VERTEX, FRAGMENT } from './shader.js';
 
-const UNIFORMS = ['uBg', 'uRes', 'uRect', 'uTail', 'uRad', 'uK', 'uAct', 'uTint', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
+const UNIFORMS = ['uBg', 'uShapes', 'uCount', 'uRes', 'uDpr', 'uMerge', 'uFlip', 'uShadowK', 'uShadowOff',
   'uSpecMul', 'uThickMul', 'uExtraLod', 'uLight', 'uIOR', 'uThick', 'uBevel', 'uDisp', 'uBlur', 'uSpec', 'uAbs'];
 
 function compile(gl, type, src) {
@@ -36,6 +36,12 @@ export class Renderer {
     this.sceneTex = gl.createTexture();
     this.fbTex = gl.createTexture();
     this.fbo = gl.createFramebuffer();
+    this.shapesTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.shapesTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     setupTexture(gl, this.sceneTex);
     setupTexture(gl, this.fbTex);
     this.hasSource = false;
@@ -74,8 +80,12 @@ export class Renderer {
     gl.uniform1f(loc.uDisp, P.disp); gl.uniform1f(loc.uBlur, P.blur); gl.uniform1f(loc.uSpec, P.spec); gl.uniform1f(loc.uAbs, P.absorb);
 
     const pass = (u) => {
-      gl.uniform4fv(loc.uRect, u.rect); gl.uniform4fv(loc.uTail, u.tail);
-      gl.uniform1fv(loc.uRad, u.rad); gl.uniform1fv(loc.uK, u.k); gl.uniform1fv(loc.uAct, u.act); gl.uniform4fv(loc.uTint, u.tint);
+      // shakllar ma'lumot teksturasida (RGBA32F, kenglik 4, balandlik = shakllar soni), 2-birlikda
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.shapesTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, Math.max(u.count, 1), 0, gl.RGBA, gl.FLOAT, u.data);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(loc.uShapes, 2); gl.uniform1i(loc.uCount, u.count);
       gl.uniform1f(loc.uMerge, u.merge); gl.uniform1f(loc.uFlip, u.flip);
       gl.uniform1f(loc.uShadowK, u.shadowK); gl.uniform1f(loc.uShadowOff, u.shadowOff);
       gl.uniform1f(loc.uSpecMul, u.specMul); gl.uniform1f(loc.uThickMul, u.thickMul); gl.uniform1f(loc.uExtraLod, u.extraLod);
@@ -93,7 +103,7 @@ export class Renderer {
 
   dispose() {
     const { gl } = this;
-    gl.deleteTexture(this.sceneTex); gl.deleteTexture(this.fbTex); gl.deleteFramebuffer(this.fbo);
+    gl.deleteTexture(this.sceneTex); gl.deleteTexture(this.fbTex); gl.deleteTexture(this.shapesTex); gl.deleteFramebuffer(this.fbo);
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }

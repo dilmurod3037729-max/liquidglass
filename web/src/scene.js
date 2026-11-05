@@ -1,6 +1,6 @@
 // core/src/scene.cpp ning JS nusxasi. Konstantalar va formulalar bir xil bo'lishi SHART:
 // tests/golden.test.js C++ yadro natijalari bilan solishtiradi.
-export const MAX_SHAPES = 32;
+export const MAX_SHAPES = 256;
 
 const STEP = 1 / 60;
 // Og'ir tomchi: kritik so'nuvchi harakat (tebranish yo'q). C++ yadro bilan bir xil bo'lishi shart.
@@ -148,21 +148,22 @@ export class Scene {
     return -1;
   }
 
-  /** @returns GPU uniform massivlari bir o'tish uchun ('back' | 'front') */
+  /**
+   * GPU uchun bir o'tishning ma'lumoti. Shakllar RGBA32F teksturaga yoziladi (kenglik 4, balandlik = count):
+   * shakl i: [0] rect(4) [1] tail(4) [2] rad, k, act, 0 [3] tint(4) -> data[i*16 + piksel*4 + komponent]
+   */
   pack(pass, dpr) {
-    const u = {
-      rect: new Float32Array(MAX_SHAPES * 4), tail: new Float32Array(MAX_SHAPES * 4),
-      rad: new Float32Array(MAX_SHAPES), k: new Float32Array(MAX_SHAPES), act: new Float32Array(MAX_SHAPES), tint: new Float32Array(MAX_SHAPES * 4),
-      merge: this.params.merge * dpr,
-    };
+    const n = this.s.length;
+    const u = { count: n, data: new Float32Array(Math.max(n, 1) * 16), merge: this.params.merge * dpr };
     this.s.forEach((s, i) => {
       const g = this.#grow(s);
-      u.rect.set([s.x * dpr, s.y * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], i * 4);
-      u.tail.set([s.ex * dpr, s.ey * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], i * 4);
-      u.rad[i] = s.radius * g * dpr;
-      u.k[i] = this.#reach(s) * dpr;
-      u.act[i] = (pass === 'front') === this.isFront(i) ? 1 : 0;
-      u.tint.set(s.tint, i * 4);
+      const o = i * 16;
+      u.data.set([s.x * dpr, s.y * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], o);
+      u.data.set([s.ex * dpr, s.ey * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], o + 4);
+      u.data[o + 8] = s.radius * g * dpr;
+      u.data[o + 9] = this.#reach(s) * dpr;
+      u.data[o + 10] = (pass === 'front') === this.isFront(i) ? 1 : 0;
+      u.data.set(s.tint, o + 12);
     });
     Object.assign(u, pass === 'back'
       ? { flip: 0, shadowK: 0.30, shadowOff: 7, specMul: 0.5, thickMul: 0.75, extraLod: 0 }

@@ -28,6 +28,7 @@
 #define GL_INFO_LOG_LENGTH 0x8B84
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_RGBA8 0x8058
+#define GL_RGBA32F 0x8814
 typedef char GLchar;
 #endif
 

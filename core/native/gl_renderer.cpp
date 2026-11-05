@@ -9,9 +9,9 @@ namespace lg {
 namespace {
 
 // shader'dagi uniform nomlari (tartib U enum bilan mos)
-enum U { Bg, Res, Rect, Tail, Rad, K, Act, Tint, Dpr, Merge, Flip, ShadowK, ShadowOff, SpecMul, ThickMul, ExtraLod, Light,
+enum U { Bg, Shapes, Count_, Res, Dpr, Merge, Flip, ShadowK, ShadowOff, SpecMul, ThickMul, ExtraLod, Light,
          IOR, Thick, Bevel, Disp, Blur, Spec, Abs, Count };
-const char* kNames[Count] = {"uBg", "uRes", "uRect", "uTail", "uRad", "uK", "uAct", "uTint", "uDpr", "uMerge", "uFlip",
+const char* kNames[Count] = {"uBg", "uShapes", "uCount", "uRes", "uDpr", "uMerge", "uFlip",
                              "uShadowK", "uShadowOff", "uSpecMul", "uThickMul", "uExtraLod", "uLight",
                              "uIOR", "uThick", "uBevel", "uDisp", "uBlur", "uSpec", "uAbs"};
 
@@ -61,6 +61,7 @@ GlRenderer::~GlRenderer() {
     if (prog_) gl::DeleteProgram(prog_);
     if (sceneTex_) glDeleteTextures(1, &sceneTex_);
     if (fbTex_) glDeleteTextures(1, &fbTex_);
+    if (shapesTex_) glDeleteTextures(1, &shapesTex_);
 }
 
 bool GlRenderer::init(const std::string& fragPath, std::string& err) {
@@ -94,6 +95,12 @@ bool GlRenderer::init(const std::string& fragPath, std::string& err) {
     gl::GenVertexArrays(1, &vao_);
     glGenTextures(1, &sceneTex_);
     glGenTextures(1, &fbTex_);
+    glGenTextures(1, &shapesTex_);
+    glBindTexture(GL_TEXTURE_2D, shapesTex_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl::GenFramebuffers(1, &fbo_);
     texParams(sceneTex_, true);
     texParams(fbTex_, true);
@@ -118,12 +125,13 @@ void GlRenderer::setSource(const unsigned char* rgba, int w, int h) {
 }
 
 void GlRenderer::setPass(const PassUniforms& u) {
-    gl::Uniform4fv(loc_[Rect], kMaxShapes, u.rect);
-    gl::Uniform4fv(loc_[Tail], kMaxShapes, u.tail);
-    gl::Uniform1fv(loc_[Rad], kMaxShapes, u.rad);
-    gl::Uniform1fv(loc_[K], kMaxShapes, u.k);
-    gl::Uniform1fv(loc_[Act], kMaxShapes, u.act);
-    gl::Uniform4fv(loc_[Tint], kMaxShapes, u.tint);
+    // shakllar: RGBA32F tekstura (4 x count), 2-birlikda
+    gl::ActiveTexture(GL_TEXTURE0 + 2);
+    glBindTexture(GL_TEXTURE_2D, shapesTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, u.count > 0 ? u.count : 1, 0, GL_RGBA, GL_FLOAT, u.shapes);
+    gl::ActiveTexture(GL_TEXTURE0);
+    gl::Uniform1i(loc_[Shapes], 2);
+    gl::Uniform1i(loc_[Count_], u.count);
     gl::Uniform1f(loc_[Merge], u.merge);
     gl::Uniform1f(loc_[Flip], u.flip);
     gl::Uniform1f(loc_[ShadowK], u.shadowK);
