@@ -1,5 +1,5 @@
 {
-  "name": "liquidglass-web",
+  "name": "@dilmurod3037729/liquidglass-web",
   "version": "0.1.0",
   "description": "Physically based liquid glass (refraction, dispersion, fluid merging, depth) for the web, WebGL2",
   "type": "module",
@@ -28,5 +28,17 @@
     "refraction",
     "ui"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dilmurod3037729-max/liquidglass.git",
+    "directory": "web"
+  },
+  "homepage": "https://github.com/dilmurod3037729-max/liquidglass#readme",
+  "bugs": {
+    "url": "https://github.com/dilmurod3037729-max/liquidglass/issues"
+  }
 }

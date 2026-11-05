@@ -97,7 +97,7 @@ bosiladigan qoladi), o'rniga shisha va yozuv nusxasi qo'yiladi. Yozuv rangi shis
 **Electron** (main jarayonda, oyna yaratilgandan keyin):
 
 ```js
-const { enable } = require('liquidglass-web/electron');
+const { enable } = require('@dilmurod3037729/liquidglass-web/electron');
 enable(mainWindow, { selector: 'button, .btn', params: { bevel: 20 } });
 ```
 
