@@ -2,7 +2,7 @@
 
 namespace lg {
 
-constexpr int kMaxShapes = 8;   // shaders/liquidglass.frag dagi `#define N` bilan bir xil
+constexpr int kMaxShapes = 32;   // shaders/liquidglass.frag dagi `#define N` bilan bir xil
 
 struct Vec2 { float x = 0, y = 0; };
 
@@ -16,7 +16,7 @@ struct Params {
     float ior = 1.55f, thick = 40, bevel = 26, disp = 0.04f, blur = 0.35f;
     float merge = 48;      // shakllar qo'shilish radiusi (px)
     float elastic = 1;     // prujina yumshoqligi, 0 = o'chiq
-    float spec = 1.1f, absorb = 0.5f;
+    float spec = 1.1f, absorb = 0.2f;
 };
 
 enum class Pass { Back, Front };

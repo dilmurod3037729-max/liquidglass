@@ -4,12 +4,29 @@
   "description": "Physically based liquid glass (refraction, dispersion, fluid merging, depth) for the web, WebGL2",
   "type": "module",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js" },
-  "files": ["src", "README.md"],
+  "exports": {
+    ".": "./src/index.js",
+    "./electron": "./electron.cjs",
+    "./dist": "./dist/liquidglass.js"
+  },
+  "files": [
+    "src",
+    "dist",
+    "electron.cjs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "sync-shader": "node scripts/sync-shader.mjs",
-    "test": "node --test tests/golden.test.js"
+    "test": "node --test tests/golden.test.js",
+    "build": "node scripts/sync-shader.mjs && node scripts/bundle.mjs"
   },
-  "keywords": ["liquid-glass", "glassmorphism", "webgl", "refraction", "ui"],
+  "keywords": [
+    "liquid-glass",
+    "glassmorphism",
+    "webgl",
+    "refraction",
+    "ui"
+  ],
   "license": "MIT"
 }

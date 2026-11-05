@@ -1,6 +1,6 @@
 // core/src/scene.cpp ning JS nusxasi. Konstantalar va formulalar bir xil bo'lishi SHART:
 // tests/golden.test.js C++ yadro natijalari bilan solishtiradi.
-export const MAX_SHAPES = 8;
+export const MAX_SHAPES = 32;
 
 const STEP = 1 / 60;
 // Og'ir tomchi: kritik so'nuvchi harakat (tebranish yo'q). C++ yadro bilan bir xil bo'lishi shart.
@@ -8,7 +8,7 @@ const HEAD_OMEGA = 10, TAIL_OMEGA = 5.5, PRESS_RATE = 0.12, FOCUS_RATE = 0.10, E
 
 export const defaultParams = () => ({
   ior: 1.55, thick: 40, bevel: 26, disp: 0.04, blur: 0.35,
-  merge: 48, elastic: 1, spec: 1.1, absorb: 0.5,
+  merge: 48, elastic: 1, spec: 1.1, absorb: 0.2,
 });
 
 /** Qattiq oyna sozlamalari: ruxsat etilgan oraliq va yorliq (panel va hujjat shundan quriladi). */

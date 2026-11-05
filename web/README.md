@@ -79,11 +79,37 @@ water.glass.thick = 90;                               // shisha ko'rinishi
 Har sozlama ruxsat etilgan oraliqda (`PARAM_SCHEMA`); undan chiqqan qiymat avtomatik qirqiladi, shuning uchun simulyatsiya portlamaydi.
 `mercury` presetida `shapeMemory` past: tomchilar sharga aylanadi (UI shakli saqlanmaydi), bu ataylab.
 
+
+## Mavjud ilovaga ulash (ilova kodiga tegmasdan)
+
+Shisha sahifadagi HAQIQIY tugmalarni materialga almashtira oladi: elementlar topiladi, asl ko'rinishi yashiriladi (`opacity: 0`,
+bosiladigan qoladi), o'rniga shisha va yozuv nusxasi qo'yiladi. Yozuv rangi shisha ostidagi fon yorug'ligiga moslashadi.
+
+**Electron** (main jarayonda, oyna yaratilgandan keyin):
+
+```js
+const { enable } = require('liquidglass-web/electron');
+enable(mainWindow, { selector: 'button, .btn', params: { bevel: 20 } });
+```
+
+Sahifa surati main jarayonda `webContents.capturePage()` bilan olinadi (WebGL DOM'ni o'qiy olmaydi). Sahifa o'zgarsa (bo'lim almashdi,
+ro'yxat yangilandi) surat va shisha ~0.2 s ichida qayta quriladi. Oldin `npm run build` (dist/liquidglass.js yig'iladi).
+
+**Brauzer / boshqa muhit:** o'zingiz sahifa suratini beradigan funksiya bering (masalan html2canvas):
+
+```js
+import { attach } from './src/index.js';
+attach({ selector: 'button, .btn', snapshot: async () => await html2canvas(document.body) });
+```
+
+Sozlamalar: `selector`, `exclude`, `maxShapes` (eng ko'pi 32), `minSize`, `params` (glass.params), `labelContrast`.
+Native (HTML'siz) oynalarda ishlamaydi. Cheklov: bir vaqtda 32 tagacha element; sahifa surati har o'zgarishda qayta olinadi (~100 ms).
+
 ## Cheklovlar (halol)
 
 - **DOM'ni sindirmaydi.** WebGL sahifadagi oddiy HTML'ni o'qiy olmaydi. Sindiriladigan narsa `source` ga
   (canvas/rasm/video) berilishi kerak. Shisha ustidagi yozuv (`labelElement`) esa oddiy HTML.
-- `glass` rejimida eng ko'pi bilan 8 ta shakl, yumaloq burchakli to'rtburchaklar.
+- `glass` rejimida eng ko'pi bilan 32 ta shakl, yumaloq burchakli to'rtburchaklar.
 - Suv rejimida hozircha oldingi/orqadagi oyna qatlami yo'q.
 - Shisha butun ekran canvas'i orqali chiziladi (hozircha `fixed`, ekran o'lchamida).
 

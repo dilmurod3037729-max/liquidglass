@@ -2,7 +2,7 @@
 // Ikki o'tish: orqa qatlam (uFlip=0) -> FBO, oldingi qatlam (uFlip=1) FBO'ni sindiradi.
 #version 300 es
 precision highp float;
-#define N 8   // LG_MAX_SHAPES bilan bir xil bo'lishi shart
+#define N 32   // LG_MAX_SHAPES bilan bir xil bo'lishi shart
 uniform sampler2D uBg;
 uniform vec2  uRes;
 uniform vec4  uRect[N];
@@ -74,17 +74,19 @@ vec2 refractOffset(float ior, vec3 Nn, float t, float dist, out float tir){
 void main(){
   vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
   vec3 col = bgAt(px, 0.0);
+  // Fon yorug'ligi (0 = qorong'i, 1 = oq): shisha qorong'i va yorug' fonda turlicha ko'rinishi uchun
+  float lum = clamp(dot(bgAt(px, 6.0), vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
   float d = sdAll(px);
   float halfMin = gMin;
 
   // Soya va kaustika: sahnaning o'ziga (tagidagi tugma/matnga ham) tushadi. Uzoqda hisoblanmaydi.
   if (d > 0.0 && d < (90.0 + uShadowOff * 2.0) * uDpr){
     float ds = sdAll(px - vec2(0.0, uShadowOff * uDpr));
-    float sh = exp(-max(ds, 0.0) / ((10.0 + uShadowOff * 0.5) * uDpr)) * uShadowK;
+    float sh = exp(-max(ds, 0.0) / ((10.0 + uShadowOff * 0.5) * uDpr)) * uShadowK * mix(1.0, 0.25, lum);
     float dc = sdAll(px - vec2(0.0, uShadowOff * 1.9 * uDpr)) + 7.0 * uDpr;
     float caus = exp(-abs(dc) / (26.0 * uDpr)) * 0.2;
     col *= 1.0 - sh;
-    col += vec3(0.38, 0.72, 1.0) * caus * (0.35 + sh);
+    col += vec3(0.38, 0.72, 1.0) * caus * (0.35 + sh) * (1.0 - 0.7 * lum);
   }
 
   if (d < 1.5 * uDpr){
@@ -119,17 +121,18 @@ void main(){
       (bgAt(pb, lod).b * 2.0 + bgAt(pb + vec2(k, 0.0), lod).b + bgAt(pb - vec2(k, 0.0), lod).b + bgAt(pb + vec2(0.0, k), lod).b + bgAt(pb - vec2(0.0, k), lod).b) / 6.0);
 
     float path = t / max(abs(refract(vec3(0.0, 0.0, -1.0), Nn, 1.0 / uIOR).z), 0.1) / uDpr;
-    tr *= exp(-uAbs * path * vec3(0.0055, 0.0030, 0.0018));
-    tr = mix(tr, tr * vec3(0.93, 0.97, 1.04), 0.6);
+    tr *= exp(-uAbs * path * vec3(0.0042, 0.0036, 0.0030) * (1.0 - 0.7 * lum));   // deyarli neytral: sovuq ko'k tus yo'q
+    tr = mix(tr, tr * vec3(0.98, 0.99, 1.02), 0.6);
+    tr *= mix(1.0, 0.93, lum);
 
     float cosT = clamp(Nn.z, 0.0, 1.0);
     float F = 0.04 + 0.96 * pow(1.0 - cosT, 5.0);
     vec3 env = mix(vec3(0.05, 0.08, 0.14), vec3(0.78, 0.9, 1.0), clamp(Nn.y * -0.5 + 0.5, 0.0, 1.0));
     env += vec3(0.10, 0.06, 0.16) * clamp(Nn.x * 0.5 + 0.5, 0.0, 1.0);
-    vec3 refl = env * F * 1.55;
+    vec3 refl = env * F * 1.55 * mix(1.0, 0.4, lum);
 
     float tir = max(max(tirR, tirG), tirB);
-    vec3 tirGlow = vec3(0.75, 0.9, 1.0) * pow(1.0 - cosT, 3.0) * 0.6 * (0.4 + 0.6 * tir);
+    vec3 tirGlow = vec3(0.75, 0.9, 1.0) * pow(1.0 - cosT, 3.0) * 0.6 * (0.4 + 0.6 * tir) * mix(1.0, 0.35, lum);
 
     // Yorug'lik kursorga ergashadi (uLight: -1..1)
     vec3 V = vec3(0.0, 0.0, 1.0);
@@ -143,7 +146,7 @@ void main(){
 
     float edge = smoothstep(2.0 * uDpr, 0.0, depth) * smoothstep(-1.5 * uDpr, 0.0, -d);
     float topBias = clamp(dot(g, vec2(-0.6, -0.8)) * 0.5 + 0.5, 0.0, 1.0);
-    glass += vec3(1.0) * edge * (0.2 + 0.6 * topBias) * 0.8;
+    glass += vec3(1.0 - 1.6 * lum) * edge * (0.2 + 0.6 * topBias) * 0.8;   // yorug' fonda chet oq emas, qoraroq chiziq
 
     float m = 1.0 - smoothstep(-0.8 * uDpr, 1.2 * uDpr, d);
     col = mix(col, glass, m);
