@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>liquidglass water demo</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05070f;font-family:Inter,Segoe UI,system-ui,sans-serif;color:#eef2f7}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  .lbl{display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;text-shadow:0 1px 6px rgba(0,0,0,.5)}
+  .lbl small{display:block;font-weight:500;font-size:12.5px;opacity:.8;margin-top:4px}
+  #hint{position:fixed;left:14px;top:14px;font-size:12.5px;color:rgba(255,255,255,.75);max-width:380px;line-height:1.5}
+  #stat{position:fixed;left:14px;bottom:12px;font-size:12px;color:rgba(255,255,255,.55);font-variant-numeric:tabular-nums}
+  #err{position:fixed;left:14px;bottom:34px;color:#ffb4b4;font-size:13px;white-space:pre-wrap}
+  #panel{position:fixed;right:14px;top:14px;width:268px;max-height:calc(100% - 28px);overflow:auto;padding:14px 16px;border-radius:18px;background:rgba(8,12,24,.8);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(10px);font-size:12.5px}
+  #panel h2{margin:0 0 8px;font-size:13px;font-weight:700}
+  #panel h3{margin:14px 0 2px;font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:rgba(255,255,255,.55)}
+  #panel label{display:grid;grid-template-columns:1fr 54px;gap:2px 8px;align-items:center;margin:7px 0 0;color:rgba(255,255,255,.85)}
+  #panel input[type=range]{grid-column:1/3;width:100%;margin:0}
+  #panel output{text-align:right;font-variant-numeric:tabular-nums;color:#7ae3f7}
+  #presets{display:flex;gap:6px;margin-top:6px}
+  #presets button{flex:1;padding:7px 4px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:inherit;cursor:pointer}
+  #presets button.on{background:rgba(122,227,247,.22);border-color:rgba(122,227,247,.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">Tomchini ushlab torting. O'ngdagi panelda suvning xususiyatlarini jonli o'zgartiring yoki tayyor materialni tanlang.</div>
+<div id="panel"></div>
+<div id="stat"></div>
+<div id="err"></div>
+<script type="module">
+import { LiquidWater, PARAM_SCHEMA, PRESETS, defaultGlass } from '../src/index.js';
+import { makeScene } from './scene-art.js';
+
+const canvas = document.getElementById('c');
+try {
+  const water = new LiquidWater(canvas, { preset: 'water' });
+  const W = innerWidth, H = innerHeight, by = H - 150 + 23;
+  const draw = () => { const c = makeScene(innerWidth, innerHeight, 1); water.setSource(c); };
+  draw(); addEventListener('resize', draw);
+
+  const label = (html) => { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = html; document.body.appendChild(el); return el; };
+  water.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Karta<small>sudrab suring</small>'));
+  water.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Kapsula'));
+  water.add({ w: 64, h: 64, radius: 32 }, { x: W * 0.82, y: H * 0.62 }, label('+'));
+  water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 - 100, y: by }, label('Tayyor'));
+  water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 + 100, y: by }, label('Bekor'));
+
+  // Panel: sozlamalar sxemadan avtomatik quriladi
+  const panel = document.getElementById('panel');
+  panel.innerHTML = '<h2>Suv xususiyatlari</h2><div id="presets"></div><h3>Suyuqlik</h3><div id="fl"></div><h3>Shisha</h3><div id="gl"></div>';
+  const sliders = [];
+  const addSlider = (host, key, spec, get, set) => {
+    const l = document.createElement('label');
+    l.innerHTML = `<span>${spec.label}</span><output></output><input type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}">`;
+    const inp = l.querySelector('input'), out = l.querySelector('output');
+    const sync = () => { inp.value = get(); out.textContent = (+get()).toFixed(spec.step < 1 ? 2 : 0); };
+    inp.addEventListener('input', () => { set(parseFloat(inp.value)); sync(); water.wake(); });
+    host.appendChild(l); sliders.push(sync); sync();
+  };
+  for (const [k, s] of Object.entries(PARAM_SCHEMA)) addSlider(panel.querySelector('#fl'), k, s, () => water.fluid.params[k], (v) => water.fluid.set({ [k]: v }));
+  const glassSchema = { ior: [1.1, 2, 0.01, 'Sinish ko\'rsatkichi'], thick: [0, 160, 1, 'Qalinlik'], bevel: [8, 90, 1, 'Chet kengligi'], disp: [0, 0.15, 0.002, 'Dispersiya'], blur: [0, 4, 0.05, 'Blur'], spec: [0, 2, 0.05, 'Yaltirash'], absorb: [0, 2, 0.05, 'Yutilish'] };
+  for (const [k, [min, max, step, label]] of Object.entries(glassSchema)) addSlider(panel.querySelector('#gl'), k, { min, max, step, label }, () => water.glass[k], (v) => { water.glass[k] = v; });
+
+  const pbox = panel.querySelector('#presets');
+  Object.keys(PRESETS).forEach((name) => {
+    const b = document.createElement('button'); b.textContent = { water: 'Suv', honey: 'Asal', mercury: 'Simob' }[name] || name;
+    b.addEventListener('click', () => { water.fluid.preset(name); sliders.forEach(f => f()); pbox.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); water.wake(); });
+    pbox.appendChild(b);
+  });
+  pbox.firstChild.classList.add('on');
+
+  const stat = document.getElementById('stat');
+  setInterval(() => { stat.textContent = `zarracha: ${water.fluid.n} · kadr: ${water.drawn} · ${water.idle >= 3 ? 'bo\'sh' : 'faol'}`; }, 400);
+  window.__water = water;
+  document.title += ' [tayyor]';
+} catch (e) { document.getElementById('err').textContent = String(e.message || e); }
+</script>
+</body>
+</html>

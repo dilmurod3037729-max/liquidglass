@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.16)
+project(liquidglass VERSION 0.1.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_library(liquidglass src/scene.cpp)
+target_include_directories(liquidglass PUBLIC include)
+if(MSVC)
+  target_compile_options(liquidglass PRIVATE /W4)
+else()
+  target_compile_options(liquidglass PRIVATE -Wall -Wextra)
+endif()
+
+enable_testing()
+add_executable(test_scene tests/test_scene.cpp)
+target_link_libraries(test_scene PRIVATE liquidglass)
+add_test(NAME scene COMMAND test_scene)
+
+add_executable(dump_golden tests/dump_golden.cpp)
+target_link_libraries(dump_golden PRIVATE liquidglass)

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>liquidglass-web demo</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05070f;font-family:Inter,Segoe UI,system-ui,sans-serif;color:#eef2f7}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  .lbl{display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;text-shadow:0 1px 6px rgba(0,0,0,.45)}
+  .lbl small{display:block;font-weight:500;font-size:12.5px;opacity:.8;margin-top:4px}
+  #hint{position:fixed;left:14px;top:14px;font-size:12.5px;color:rgba(255,255,255,.75);max-width:420px;line-height:1.5}
+  #stat{position:fixed;left:14px;bottom:12px;font-size:12px;color:rgba(255,255,255,.55);font-variant-numeric:tabular-nums}
+  #panel{position:fixed;right:14px;top:14px;width:250px;max-height:calc(100% - 28px);overflow:auto;padding:14px 16px;border-radius:18px;background:rgba(8,12,24,.8);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(10px);font-size:12.5px}
+  #panel h2{margin:0 0 8px;font-size:13px;font-weight:700}
+  #panel label{display:grid;grid-template-columns:1fr 50px;gap:2px 8px;align-items:center;margin:7px 0 0;color:rgba(255,255,255,.85)}
+  #panel input[type=range]{grid-column:1/3;width:100%;margin:0}
+  #panel output{text-align:right;font-variant-numeric:tabular-nums;color:#7ae3f7}
+  #panel button{margin-top:12px;width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:inherit;cursor:pointer}
+  #err{position:fixed;left:14px;bottom:34px;color:#ffb4b4;font-size:13px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">Shakllarni suring, bir-biriga yoki pastdagi tugmalarga yaqinlashtiring. Bosilgani oldinga chiqadi.</div>
+<div id="panel"></div>
+<div id="stat"></div>
+<div id="err"></div>
+<script type="module">
+import { LiquidGlass, GLASS_SCHEMA, defaultParams } from '../src/index.js';
+import { makeScene } from './scene-art.js';
+
+const canvas = document.getElementById('c');
+try {
+  const glass = new LiquidGlass(canvas);
+  const W = innerWidth, H = innerHeight, by = H - 150 + 23;
+  const draw = () => glass.setSource(makeScene(canvas.width, canvas.height, glass.dpr));
+  draw();
+  addEventListener('resize', draw);
+
+  const label = (html) => { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = html; document.body.appendChild(el); return el; };
+  glass.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Karta<small>sudrab suring</small>'));
+  glass.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Kapsula'));
+  glass.add({ w: 64, h: 64, radius: 32 }, { x: W * 0.82, y: H * 0.62 }, label('+'));
+  glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 - 100, y: by }, label('Tayyor'));
+  glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 + 100, y: by }, label('Bekor'));
+
+  const stat = document.getElementById('stat');
+  setInterval(() => { stat.textContent = `chizilgan kadr: ${glass.drawn} · ${glass.idle >= 3 ? 'bo\'sh (GPU ishlamayapti)' : 'faol'}`; }, 400);
+  // Sozlash paneli: GLASS_SCHEMA dan avtomatik quriladi
+  const panel = document.getElementById('panel');
+  panel.innerHTML = '<h2>Oyna sozlamalari</h2>';
+  const syncs = [];
+  for (const [k, sp] of Object.entries(GLASS_SCHEMA)) {
+    const l = document.createElement('label');
+    l.innerHTML = '<span>' + sp.label + '</span><output></output><input type="range" min="' + sp.min + '" max="' + sp.max + '" step="' + sp.step + '">';
+    const inp = l.querySelector('input'), out = l.querySelector('output');
+    const sync = () => { inp.value = glass.params[k]; out.textContent = (+glass.params[k]).toFixed(sp.step < 1 ? 2 : 0); };
+    inp.addEventListener('input', () => { glass.params[k] = parseFloat(inp.value); sync(); glass.wake(); });
+    panel.appendChild(l); syncs.push(sync); sync();
+  }
+  const reset = document.createElement('button'); reset.textContent = 'Boshlang\'ich';
+  reset.addEventListener('click', () => { Object.assign(glass.params, defaultParams(), { elastic: 0 }); syncs.forEach(f => f()); glass.wake(); });
+  panel.appendChild(reset);
+  window.__glass = glass;
+  document.title += ' [tayyor]';
+} catch (e) { document.getElementById('err').textContent = String(e.message || e); }
+</script>
+</body>
+</html>
