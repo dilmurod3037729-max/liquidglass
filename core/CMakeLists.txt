@@ -11,6 +11,11 @@ else()
   target_compile_options(liquidglass PRIVATE -Wall -Wextra)
 endif()
 
+option(LG_BUILD_NATIVE "OpenGL backend + GLFW/ImGui namunasi (internet kerak)" OFF)
+if(LG_BUILD_NATIVE)
+  add_subdirectory(native)
+endif()
+
 enable_testing()
 add_executable(test_scene tests/test_scene.cpp)
 target_link_libraries(test_scene PRIVATE liquidglass)
