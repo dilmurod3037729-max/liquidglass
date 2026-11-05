@@ -1,7 +1,7 @@
 # liquidglass-web
 
-![qattiq oyna](docs/glass.png)
-![suv rejimi](docs/water.png)
+![qattiq oyna](https://raw.githubusercontent.com/dilmurod3037729-max/liquidglass/main/web/docs/glass.png)
+![suv rejimi](https://raw.githubusercontent.com/dilmurod3037729-max/liquidglass/main/web/docs/water.png)
 
 Fizikaga asoslangan "suyuq shisha" (WebGL2), bog'liqliksiz ES modul. Ikki rejim:
 
