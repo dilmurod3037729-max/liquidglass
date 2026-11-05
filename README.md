@@ -20,6 +20,8 @@ glass.add({ w: 220, h: 58, radius: 29 }, { x: 300, y: 200 }, labelElement);
 glass.params.bevel = 18;
 ```
 
+Install: `npm install @dilmurod3037729/liquidglass-web` (or load from jsDelivr, see [`web/README.md`](web/README.md)).
+
 Run locally: `node web/scripts/serve.mjs`, then open `http://localhost:5173/demo/`.
 Tests: `cd web && npm test` (JS core matches the C++ core; water simulation stays stable at extreme settings).
 

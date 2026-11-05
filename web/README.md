@@ -10,6 +10,16 @@ Fizikaga asoslangan "suyuq shisha" (WebGL2), bog'liqliksiz ES modul. Ikki rejim:
   (orqadagi oynani oldingi shisha sindiradi).
 - **`water`** (ixtiyoriy): zarrachali erkin suv. Yopishadi, siqilmaydi, oynada og'ir sirpanadi.
 
+## O'rnatish (npm)
+
+```
+npm install @dilmurod3037729/liquidglass-web
+```
+
+```js
+import { createLiquidGlass } from '@dilmurod3037729/liquidglass-web';
+```
+
 ## Tez ulash (CDN, o'rnatishsiz)
 
 ```js
