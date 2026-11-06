@@ -25,6 +25,21 @@ Parametrlar: `selector` (sinf, standart `QPushButton`), `params`, `radius` (px, 
 4. Asl tugmaning fon rangi shisha rangi bo'ladi (ko'k tugma = ko'k shisha, neytral/och = tiniq shisha).
 5. Hover va bosish shishani biroz kattalashtiradi. Oyna o'zgarsa (bo'lim almashdi, matn yozildi) surat va shisha o'zi yangilanadi.
 
+## Tezlik (o'lchangan)
+
+PySide6 6.11, 1400x900 oyna (DPR 1.5), 6 shisha tugma, RTX 2080 SUPER:
+
+| Qism | Vaqt |
+|---|---|
+| GL chizish (`paintGL`, protsessor tomoni) | ~0.7 ms (hover animatsiyasi paytida ham shu) |
+| Sahifa surati + GPU'ga yuklash | ~20 ms, **faqat oyna o'zgarganda** |
+| Bo'sh turganda | 0 (zaxira yangilash 2.5 s da bir marta; matn maydonida fokus bo'lsa 0.5 s) |
+
+Surat olish `Paint` hodisalariga emas, haqiqiy kirish hodisalariga (bosish, klaviatura, g'ildirak, fokus) va tuzilma o'zgarishlariga
+(`LayoutRequest`, `Show/Hide`, `Resize`...) bog'langan: shisha qatlami yangilanganda Qt uning ostidagi hamma vidjetni qayta chizadi,
+shuning uchun `Paint` ni o'zgarish belgisi qilsak cheksiz sikl bo'ladi (bunday qilib ko'rilgan: 20 ms har 250 ms da).
+Sozlash: `attach(window, idle_ms=0)` zaxira yangilashni o'chiradi.
+
 ## Cheklovlar
 
 - Shisha qatlami oynani to'liq qoplaydi va sahifa **suratini** ko'rsatadi: surat har ~250 ms da (o'zgargan bo'lsa) yangilanadi, shuning uchun tez animatsiyalar kechikadi.

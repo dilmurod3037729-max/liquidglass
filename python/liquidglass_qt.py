@@ -15,14 +15,16 @@ from __future__ import annotations
 
 import ctypes
 import re
+import time
 from pathlib import Path
 
 from shiboken6 import VoidPtr
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer
-from PySide6.QtGui import QColor, QImage, QOpenGLContext, QVector2D
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QImage, QOpenGLContext, QPainter, QRegion, QVector2D
 from PySide6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram, QOpenGLTexture, QOpenGLVertexArrayObject
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QGraphicsOpacityEffect, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
+                               QTextEdit, QWidget)
 
 SHADER = Path(__file__).resolve().parent.parent / "core" / "shaders" / "liquidglass.frag"
 GL_TRIANGLES, GL_BLEND, GL_DEPTH_TEST = 0x0004, 0x0BE2, 0x0B71
@@ -151,6 +153,7 @@ class GlassOverlay(QOpenGLWidget):
         self.scene_tex: QOpenGLTexture | None = None
         self.shapes_tex: QOpenGLTexture | None = None
         self.shapes_count = -1
+        self._shapes_data = b""
         self.tiles_tex = self._float_tex(1, 1, QOpenGLTexture.R32F, QOpenGLTexture.Red, bytes(4))
         self._ready = True
 
@@ -189,14 +192,17 @@ class GlassOverlay(QOpenGLWidget):
     def _upload_shapes(self, dpr):
         data = self.scene.pack(dpr)
         n = len(self.scene.shapes)
-        if self.shapes_tex is not None:
-            self.shapes_tex.destroy()
-            self.shapes_tex = None
-        if n:
-            self.shapes_tex = self._float_tex(4, n, QOpenGLTexture.RGBA32F, QOpenGLTexture.RGBA, data)
-        else:
-            self.shapes_tex = self._float_tex(4, 1, QOpenGLTexture.RGBA32F, QOpenGLTexture.RGBA, bytes(64))
-        self.shapes_count = n
+        if data == self._shapes_data and self.shapes_tex is not None:
+            return   # o'zgarmagan: GPU'ga qayta yuklanmaydi
+        self._shapes_data = data
+        if n != self.shapes_count or self.shapes_tex is None:
+            if self.shapes_tex is not None:
+                self.shapes_tex.destroy()
+            self.shapes_tex = self._float_tex(4, max(n, 1), QOpenGLTexture.RGBA32F, QOpenGLTexture.RGBA, data or bytes(64))
+            self.shapes_count = n
+        else:   # shu o'lchamdagi tekstura: faqat ma'lumot almashtiriladi
+            buf = ctypes.create_string_buffer(data, len(data))
+            self.shapes_tex.setData(QOpenGLTexture.RGBA, QOpenGLTexture.Float32, VoidPtr(_addr(buf)))
 
     def _u(self, name: str, value):
         """Uniform o'rnatish. PySide6 Python float'ni int setter'iga yuboradi (qiymat 0 qoladi), shuning uchun glUniform* to'g'ridan-to'g'ri."""
@@ -249,18 +255,27 @@ class GlassOverlay(QOpenGLWidget):
 
 
 # ───────────────────────── boshqaruvchi ─────────────────────────
+# Paint hodisasi O'ZGARISH belgisi EMAS: shisha qatlami yangilanganda Qt uning ostidagi hamma vidjetni qayta chizadi (cheksiz sikl bo'lardi)
+_WATCH = (QEvent.Resize, QEvent.Move, QEvent.Show, QEvent.Hide, QEvent.LayoutRequest, QEvent.EnabledChange, QEvent.StyleChange,
+          QEvent.FontChange, QEvent.PaletteChange, QEvent.DynamicPropertyChange)
+# Foydalanuvchi harakati: ilova bunga dasturiy ravishda (kechikib) javob beradi, shuning uchun bir necha marta qayta suratga olinadi
+_INPUT = (QEvent.MouseButtonPress, QEvent.MouseButtonRelease, QEvent.MouseButtonDblClick, QEvent.KeyPress, QEvent.KeyRelease,
+          QEvent.Wheel, QEvent.FocusIn, QEvent.FocusOut, QEvent.InputMethod, QEvent.Drop)
+
+
 def _luma(c: QColor) -> float:
     return (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255.0
 
 
 class GlassController(QObject):
     def __init__(self, window: QWidget, selector=QPushButton, params: dict | None = None, radius: float | None = None,
-                 poll_ms: int = 250, min_size=(28, 22)):
+                 poll_ms: int = 80, min_size=(28, 22), idle_ms: int = 2500):
         super().__init__(window)
         self.window = window
         self.selector = selector
         self.params = {**DEFAULT_PARAMS, **(params or {})}
         self.min_size = min_size
+        self.idle_ms = idle_ms   # o'zgarish hodisasi bo'lmasa ham shuncha vaqtda bir marta yangilash (0 = o'chiq)
         self.radius = radius if radius is not None else self._app_radius()
         self.scene = Scene()
         self.overlay = GlassOverlay(window, self.scene, self.params)
@@ -273,11 +288,15 @@ class GlassController(QObject):
         self.overlay.show()
         window.installEventFilter(self)
         QApplication.instance().installEventFilter(self)
+        self._dirty = True
+        self._own: set[int] = set()   # shisha qatlami, yozuvlar va shisha tugmalar: ularning chizilishi "o'zgarish" emas
+        self._buf: QImage | None = None
+        self._last_refresh = 0.0
+        self._min_gap = max(poll_ms, 40) / 1000.0
         self._timer = QTimer(self)
-        self._timer.setInterval(poll_ms)
-        self._timer.timeout.connect(self.refresh)
+        self._timer.setInterval(30)
+        self._timer.timeout.connect(self._poll)
         self._timer.start()
-        QTimer.singleShot(0, self.refresh)
 
     @staticmethod
     def _app_radius() -> float:
@@ -313,6 +332,50 @@ class GlassController(QObject):
         return tint
 
     # --- yangilash ---
+    def _mark(self):
+        self._dirty = True
+
+    def _burst(self):
+        """Kirish hodisasidan keyin: darhol va ilova natijani yangilashi uchun yana bir necha marta."""
+        self._dirty = True
+        for ms in (60, 450, 1300):
+            QTimer.singleShot(ms, self._mark)
+
+    def _poll(self):
+        """Bo'sh turganda hech narsa qilmaydi: faqat oyna o'zgargan bo'lsa (bayroq) va oxirgi yangilashdan keyin yetarli vaqt o'tgan bo'lsa."""
+        now = time.perf_counter()
+        if not self._dirty and self.idle_ms > 0:
+            fw = QApplication.focusWidget()
+            text_focus = isinstance(fw, (QLineEdit, QAbstractSpinBox, QTextEdit, QPlainTextEdit)) and self.window.isAncestorOf(fw)
+            gap = 0.5 if text_focus else self.idle_ms / 1000.0   # matn kursori miltillaydi: tezroq
+            if now - self._last_refresh >= gap:
+                self._dirty = True
+        if self._dirty and now - self._last_refresh >= self._min_gap:
+            self.refresh()
+
+    def _snapshot(self) -> QImage:
+        """Oyna surati (tugmalar yashirin, shisha qatlami va yozuvlarsiz). Bufer qayta ishlatiladi."""
+        w = self.window
+        dpr = w.devicePixelRatioF()
+        size = QSize(int(w.width() * dpr), int(w.height() * dpr))
+        if self._buf is None or self._buf.size() != size:
+            self._buf = QImage(size, QImage.Format_RGBA8888_Premultiplied)
+        buf = self._buf
+        buf.setDevicePixelRatio(dpr)
+        buf.fill(w.palette().window().color())
+        # Butun oyna (stylesheet foni ham) chiziladi; shisha qatlami va yozuvlar shu paytda yashiriladi. Paint hodisalari
+        # o'zgarish belgisi emas, shuning uchun yashirish/ko'rsatish yangi yangilanishni chaqirmaydi.
+        self.overlay.hide()
+        for lab in self.labels:
+            lab.hide()
+        painter = QPainter(buf)
+        w.render(painter, QPoint(0, 0))
+        painter.end()
+        self.overlay.show()
+        for lab in self.labels:
+            lab.show()
+        return buf
+
     def refresh(self):
         w = self.window
         if not w.isVisible():
@@ -323,20 +386,17 @@ class GlassController(QObject):
         if rebuilt:
             self._rebuild(buttons)
             self._sig = sig
-        # sahifa surati: shisha qatlami va yozuvlar yashirin holda
-        self.overlay.hide()
-        for lab in self.labels:
-            lab.hide()
-        img = w.grab().toImage()
-        self.overlay.show()
-        for lab in self.labels:
-            lab.show()
-        self.overlay.setGeometry(w.rect())
-        self.overlay.raise_()
-        for lab in self.labels:
-            lab.raise_()
-        if rebuilt or self._last is None or img != self._last:
-            self._last = img
+        self._dirty = False
+        self._last_refresh = time.perf_counter()
+        img = self._snapshot()
+        if rebuilt:   # raise_/setGeometry sahifani qayta chizdiradi: faqat kerak bo'lganda
+            self.overlay.setGeometry(w.rect())
+            self.overlay.raise_()
+            for lab in self.labels:
+                lab.raise_()
+        elif self.overlay.geometry() != w.rect():
+            self.overlay.setGeometry(w.rect())
+        if True:
             self._recolor_labels(img)
             self.overlay.set_source(img)
             self.overlay.wake()
@@ -350,6 +410,7 @@ class GlassController(QObject):
         self.labels.clear()
         self.items.clear()
         self.scene.clear()
+        self._own = {id(self.overlay)}
         for b in buttons:
             tint = self._tint_of(b)      # asl ko'rinishda rang olinadi, keyin yashiramiz
             if not isinstance(b.graphicsEffect(), QGraphicsOpacityEffect):
@@ -366,6 +427,8 @@ class GlassController(QObject):
             lab.setAttribute(Qt.WA_TransparentForMouseEvents)
             lab.setStyleSheet("background: transparent;")
             lab.show()
+            self._own.add(id(lab))
+            self._own.add(id(b))
             self.labels.append(lab)
             self.items.append({"btn": b, "rect": r, "tint": tint, "idx": idx})
 
@@ -391,9 +454,16 @@ class GlassController(QObject):
         return -1
 
     def eventFilter(self, obj, ev):
+        try:
+            return self._filter(obj, ev)
+        except RuntimeError:   # dastur yopilayotganda oyna o'chirilgan bo'lishi mumkin
+            return False
+
+    def _filter(self, obj, ev):
         t = ev.type()
         if obj is self.window and t in (QEvent.Resize, QEvent.Show):
             self.overlay.setGeometry(self.window.rect())
+            self._dirty = True
         elif t == QEvent.MouseMove and hasattr(ev, "globalPosition"):
             i = self._index_at(ev.globalPosition().toPoint())
             if i != self.scene.hovered:
@@ -406,10 +476,14 @@ class GlassController(QObject):
             if i >= 0:
                 self.scene.pressed = i
                 self.overlay.wake()
+        elif t in _WATCH and isinstance(obj, QWidget) and id(obj) not in self._own and obj is not self.window and self.window.isAncestorOf(obj):
+            self._dirty = True   # ilova tuzilmasi o'zgardi: surat qayta olinadi
+        elif t in _INPUT and isinstance(obj, QWidget) and obj is not self.overlay and self.window.isAncestorOf(obj):
+            self._burst()
         elif t == QEvent.MouseButtonRelease and self.scene.pressed >= 0:
             self.scene.pressed = -1
             self.overlay.wake()
-            QTimer.singleShot(0, self.refresh)
+            self._dirty = True
         return False
 
 
