@@ -4,3 +4,4 @@ build/
 *.png
 !web/docs/*.png
 !core/native/docs/*.png
+!core/qt/docs/*.png

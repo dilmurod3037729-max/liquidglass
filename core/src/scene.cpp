@@ -32,6 +32,10 @@ void Scene::teleport(int id, Vec2 p) {
     s.y = s.ty = s.ey = p.y;
     s.hvx = s.hvy = s.vx = s.vy = 0;
 }
+void Scene::setTint(int id, float r, float g, float b, float a) {
+    float* t = s_[id].d.tint;
+    t[0] = r; t[1] = g; t[2] = b; t[3] = a;
+}
 void Scene::setPressed(int id, bool down) { pressed_ = down ? id : (pressed_ == id ? -1 : pressed_); }
 void Scene::focus(int id) { if (id >= 0 && id < count() && s_[id].d.draggable) focus_ = id; }
 

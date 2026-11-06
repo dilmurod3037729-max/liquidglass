@@ -2,6 +2,10 @@
 //   native_demo                    interaktiv (shakllarni sudrang, panelda sozlang)
 //   native_demo --shot out.png     oynasiz: skriptlangan sudrash, so'ng skrinshot (test uchun)
 #include "../gl_loader.hpp"
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
+#include <GLFW/glfw3.h>
 #include "../gl_renderer.hpp"
 #include "png_write.hpp"
 #include "scene_art.hpp"
@@ -62,8 +66,10 @@ void buildScene(int ww, int wh) {
     app.card = app.scene.add({280, 170, 40, true}, {ww * 0.30f, wh * 0.40f});
     app.scene.add({220, 58, 29, true}, {ww * 0.62f, wh * 0.30f});
     app.scene.add({64, 64, 32, true}, {ww * 0.82f, wh * 0.62f});
-    app.scene.add({150, 52, 26, false}, {ww / 2.0f - 100, by});
-    app.scene.add({150, 52, 26, false}, {ww / 2.0f + 100, by});
+    const int ok = app.scene.add({150, 52, 26, false}, {ww / 2.0f - 100, by});
+    const int cancel = app.scene.add({150, 52, 26, false}, {ww / 2.0f + 100, by});
+    app.scene.setTint(ok, 0.15f, 0.65f, 0.35f, 0.4f);      // yashil "Tayyor"
+    app.scene.setTint(cancel, 0.85f, 0.2f, 0.25f, 0.4f);   // qizil "Bekor"
 }
 
 void panel(float fps) {
@@ -81,6 +87,18 @@ void panel(float fps) {
     ImGui::SliderFloat("Yaltirash", &p.spec, 0, 2);
     ImGui::SliderFloat("Yutilish", &p.absorb, 0, 2);
     if (ImGui::Button("Boshlang'ich")) { p = lg::Params(); p.elastic = 0; }
+    ImGui::Separator();
+    ImGui::Text("Shakllar: rang (a = kuch) va qatlam");
+    static const char* kNames[] = {"Karta", "Kapsula", "Nuqta", "Tayyor", "Bekor"};
+    for (int i = 0; i < app.scene.count() && i < 5; i++) {
+        ImGui::PushID(i);
+        float c[4];
+        std::memcpy(c, app.scene.tint(i), sizeof c);
+        if (ImGui::ColorEdit4(kNames[i], c, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview))
+            app.scene.setTint(i, c[0], c[1], c[2], c[3]);
+        if (i < 3) { ImGui::SameLine(); if (ImGui::SmallButton("Oldinga")) app.scene.focus(i); }
+        ImGui::PopID();
+    }
     ImGui::Text("%.0f FPS", fps);
     ImGui::End();
 }
@@ -100,7 +118,7 @@ int main(int argc, char** argv) {
     if (!win) { std::fprintf(stderr, "oyna yaratilmadi (OpenGL 3.3 kerak)\n"); return 1; }
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
-    if (!lg::gl::load()) { std::fprintf(stderr, "OpenGL funksiyalari yuklanmadi\n"); return 1; }
+    if (!lg::gl::load([](const char* n) { return reinterpret_cast<void*>(glfwGetProcAddress(n)); })) { std::fprintf(stderr, "OpenGL funksiyalari yuklanmadi\n"); return 1; }
     std::printf("GL: %s | %s\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
 
     IMGUI_CHECKVERSION();

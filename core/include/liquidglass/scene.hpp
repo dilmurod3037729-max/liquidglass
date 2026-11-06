@@ -17,6 +17,8 @@ public:
     void setPressed(int id, bool down);               // bosilgan: biroz kattalashadi
     void setHovered(int id) { hovered_ = id; }        // kursor ostidagi shakl (-1 = yo'q): biroz kattalashadi
     void teleport(int id, Vec2 p);                    // zudlik bilan (lagsiz) joylashtirish
+    void setTint(int id, float r, float g, float b, float a);   // shisha rangi (rgb 0..1, a = kuch; 0 = tiniq)
+    const float* tint(int id) const { return s_[id].d.tint; }
     void focus(int id);                               // shu shakl oldinga, qolgan sudraladiganlar orqaga
     int  focused() const { return focus_; }
     bool isFront(int id) const;

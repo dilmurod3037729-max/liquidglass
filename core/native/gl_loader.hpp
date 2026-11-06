@@ -4,33 +4,60 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
-#include <GLFW/glfw3.h>
 #include <GL/gl.h>
 
 #ifndef APIENTRY
 #define APIENTRY
 #endif
+// Konstantalar alohida-alohida (Qt/GLFW sarlavhalari ba'zilarini o'zi aniqlagan bo'lishi mumkin)
 #ifndef GL_FRAMEBUFFER
 #define GL_FRAMEBUFFER 0x8D40
+#endif
+#ifndef GL_COLOR_ATTACHMENT0
 #define GL_COLOR_ATTACHMENT0 0x8CE0
+#endif
+#ifndef GL_FRAMEBUFFER_COMPLETE
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#endif
+#ifndef GL_TEXTURE0
 #define GL_TEXTURE0 0x84C0
+#endif
+#ifndef GL_FRAGMENT_SHADER
 #define GL_FRAGMENT_SHADER 0x8B30
+#endif
+#ifndef GL_VERTEX_SHADER
 #define GL_VERTEX_SHADER 0x8B31
+#endif
+#ifndef GL_COMPILE_STATUS
 #define GL_COMPILE_STATUS 0x8B81
+#endif
+#ifndef GL_LINK_STATUS
 #define GL_LINK_STATUS 0x8B82
+#endif
+#ifndef GL_INFO_LOG_LENGTH
 #define GL_INFO_LOG_LENGTH 0x8B84
+#endif
+#ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
+#endif
+#ifndef GL_RGBA8
 #define GL_RGBA8 0x8058
+#endif
+#ifndef GL_RGBA32F
 #define GL_RGBA32F 0x8814
+#endif
+#ifndef GL_R32F
 #define GL_R32F 0x822E
+#endif
+#ifndef GL_RED
 #define GL_RED 0x1903
+#endif
+#ifndef GL_VERSION_2_0
 typedef char GLchar;
 #endif
 
@@ -70,10 +97,13 @@ namespace lg::gl {
 LG_GL_FUNCS(LG_DECL)
 #undef LG_DECL
 
-inline bool load() {
+// getProc: kontekstdan funksiya manzilini oluvchi funksiya (glfwGetProcAddress, QOpenGLContext::getProcAddress, ...).
+using GetProc = void* (*)(const char*);
+
+inline bool load(GetProc get) {
     bool ok = true;
 #define LG_LOAD(R, N, A)                                                       \
-    N = reinterpret_cast<R(APIENTRY*) A>(glfwGetProcAddress("gl" #N));         \
+    N = reinterpret_cast<R(APIENTRY*) A>(get("gl" #N));                        \
     ok = ok && N != nullptr;
     LG_GL_FUNCS(LG_LOAD)
 #undef LG_LOAD

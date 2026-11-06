@@ -113,6 +113,13 @@ int main() {
     hv.teleport(0, {300, 200});
     CHECK(std::fabs(hv.position(0).x - 300) < 1e-4f && std::fabs(hv.tailPosition(0).y - 200) < 1e-4f);
 
+    // Rang: setTint paketga tushadi
+    Scene tn;
+    tn.add({100, 40, 20, false}, {0, 0});
+    tn.setTint(0, 0.9f, 0.2f, 0.1f, 0.35f);
+    const PassUniforms tp = tn.pack(Pass::Front, 1.0f);
+    CHECK(std::fabs(tp.tint(0)[0] - 0.9f) < 1e-6f && std::fabs(tp.tint(0)[3] - 0.35f) < 1e-6f);
+
     std::printf(fails ? "%d xato\n" : "hammasi o'tdi\n", fails);
     return fails ? 1 : 0;
 }

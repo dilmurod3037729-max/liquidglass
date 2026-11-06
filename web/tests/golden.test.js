@@ -41,3 +41,11 @@ test('pack: shakl soni va qatlam ajratish', () => {
   assert.equal(f.count, 1); assert.equal(b.count, 1);   // har o'tishda faqat o'z shakllari
   assert.equal(f.data[0], 0); assert.equal(b.data[0], 200);   // oldingi: 0-shakl (x=0), orqadagi: 1-shakl (x=200)
 });
+
+test('setTint: rang paketga tushadi', () => {
+  const s = new Scene();
+  s.add({ w: 100, h: 60, radius: 30, draggable: false }, { x: 0, y: 0 });
+  s.setTint(0, [0.9, 0.2, 0.1, 0.35]);
+  const f = s.pack('front', 1);
+  assert.ok(Math.abs(f.data[12] - 0.9) < 1e-6 && Math.abs(f.data[15] - 0.35) < 1e-6);
+});

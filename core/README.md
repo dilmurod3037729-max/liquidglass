@@ -36,3 +36,17 @@ Birinchi yig'ishda GLFW va ImGui GitHub'dan avtomatik yuklanadi (internet kerak)
 Chizuvchini o'z ilovangizga ulash: `lg::gl::load()` (GLFW kontekstidan keyin), `GlRenderer::init(fragPath)`, `resize()`, `setSource(rgba, w, h)`,
 har kadrda `scene.step(dt)` va `renderer.render(scene, dpr, light)`.
 Cheklov: sahna (sindiriladigan rasm) siz tomondan RGBA piksel sifatida beriladi; OpenGL 3.3 core kerak.
+
+## Qt 6 backend (QOpenGLWidget)
+
+`qt/` ichida `GlassWidget` (QOpenGLWidget): bir xil `GlRenderer`, shader va `lg::Scene` yadro. Namuna dastur Qt slayderlari paneli bilan.
+
+    cmake -S . -B build-qt -G Ninja -DLG_BUILD_QT=ON -DCMAKE_PREFIX_PATH=<Qt>/6.x/<kit>
+    cmake --build build-qt
+    build-qt\qt\qt_demo.exe              # interaktiv
+    build-qt\qt\qt_demo.exe --shot a.png # oynasiz skrinshot (skriptlangan sudrash)
+
+![qt](qt/docs/qt.png)
+
+O'z Qt ilovangizga ulash: `GlassWidget` yarating, `scene()` orqali shakllar qo'shing (`add`, `setTint`), `setSource(QImage)` bilan sindiriladigan sahnani bering.
+Sinalgan kit: Qt 6.11 MinGW 13.1 (Windows). OpenGL 3.3 core talab qilinadi.

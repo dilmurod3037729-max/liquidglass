@@ -70,6 +70,8 @@ class Scene {
   get count() { return this.s.length; }
   get focused() { return this.focusIdx; }
   setTarget(id, p) { this.s[id].tx = p.x; this.s[id].ty = p.y; }
+  /** Shisha rangi: [r, g, b, kuch] (0..1). Kuch 0 = tiniq shisha */
+  setTint(id, t) { this.s[id].tint = [t[0], t[1], t[2], t[3]]; }
   setHovered(id) { this.hovered = id; }   // kursor ostidagi shakl (-1 = yo'q): biroz kattalashadi
   /** Zudlik bilan joylashtirish (lagsiz): sahifa surilganda asl elementga ergashish uchun */
   teleport(id, x, y) { const s = this.s[id]; s.x = s.tx = s.ex = x; s.y = s.ty = s.ey = y; s.hvx = s.hvy = s.vx = s.vy = 0; }
