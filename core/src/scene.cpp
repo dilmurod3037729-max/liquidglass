@@ -146,7 +146,7 @@ PassUniforms Scene::pack(Pass pass, float dpr) const {
         const Shape& s = s_[i];
         const float g = grow(s);
         const float r[4] = {s.x * dpr, s.y * dpr, s.d.w / 2 * g * dpr, s.d.h / 2 * g * dpr};
-        const float t[4] = {s.ex * dpr, s.ey * dpr, r[2], r[3]};
+        const float t[4] = {s.ex * dpr, s.ey * dpr, s.d.bevel, s.d.thick};   // zw = material (shader o'qiydi)
         float* o = u.shapes + j * 16;
         std::copy(r, r + 4, o);
         std::copy(t, t + 4, o + 4);

@@ -19,6 +19,7 @@ public:
     void teleport(int id, Vec2 p);                    // zudlik bilan (lagsiz) joylashtirish
     void setTint(int id, float r, float g, float b, float a);   // shisha rangi (rgb 0..1, a = kuch; 0 = tiniq)
     const float* tint(int id) const { return s_[id].d.tint; }
+    void setMaterial(int id, float bevelScale, float thickScale) { s_[id].d.bevel = bevelScale; s_[id].d.thick = thickScale; }
     void focus(int id);                               // shu shakl oldinga, qolgan sudraladiganlar orqaga
     int  focused() const { return focus_; }
     bool isFront(int id) const;

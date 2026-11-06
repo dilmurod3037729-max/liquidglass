@@ -49,3 +49,10 @@ test('setTint: rang paketga tushadi', () => {
   const f = s.pack('front', 1);
   assert.ok(Math.abs(f.data[12] - 0.9) < 1e-6 && Math.abs(f.data[15] - 0.35) < 1e-6);
 });
+
+test('material: chet/qalinlik ko\'paytiruvchisi dum zw da', () => {
+  const s = new Scene();
+  s.add({ w: 100, h: 60, radius: 30, draggable: false, bevel: 0.4, thick: 0.7 }, { x: 0, y: 0 });
+  const f = s.pack('front', 1);
+  assert.ok(Math.abs(f.data[6] - 0.4) < 1e-6 && Math.abs(f.data[7] - 0.7) < 1e-6);
+});

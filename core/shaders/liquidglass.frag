@@ -4,7 +4,7 @@
 precision highp float;
 uniform sampler2D uBg;
 // Shakllar ma'lumot teksturasida (RGBA32F, kenglik 4, balandlik = shakllar soni). Har shakl 4 ta piksel:
-//   [0] rect: markaz.xy, yarim o'lcham.xy   [1] tail: kechikkan dum markazi.xy
+//   [0] rect: markaz.xy, yarim o'lcham.xy   [1] tail: kechikkan dum markazi.xy + MATERIAL: z = chet kengligi ko'paytiruvchisi, w = qalinlik ko'paytiruvchisi
 //   [2] meta: burchak radiusi, maks. cho'zilish, faol(1/0), joriy cho'zilish (px)   [3] tint: rgb + kuch
 uniform sampler2D uShapes;
 uniform int   uCount;
@@ -14,6 +14,7 @@ uniform sampler2D uTiles;
 uniform float uTileSize;   // 0 = bo'laklarsiz (hamma shakl)
 uniform int   uGridW, uGridH;
 uniform vec2  uRes;
+uniform float uTransparent;   // 1 = shaffof qatlam (ilova ustida): faqat shisha va soya, premultiplied alpha; 0 = butun sahna
 uniform float uDpr, uMerge, uFlip, uShadowK, uShadowOff, uSpecMul, uThickMul, uExtraLod;
 uniform vec2  uLight;
 uniform float uIOR, uThick, uBevel, uDisp, uBlur, uSpec, uAbs;
@@ -30,6 +31,7 @@ float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; r
 // Eng yaqin shaklning kichik yarim o'lchami (sdAll yozadi): chet kengligi shundan oshmasligi uchun
 float gMin = 1e5;
 vec4  gTint = vec4(0.0);
+vec2  gMat = vec2(1.0);   // eng yaqin shaklning materiali: (chet ko'paytiruvchisi, qalinlik ko'paytiruvchisi)
 // Bitta tomchi: BITTA jism. Bosh va dum nuqtasi orasidagi farq (cho'zilish) jismni harakat o'qi bo'ylab uzaytiradi,
 // yuzani saqlash uchun enini toraytiradi va orqa tomonini uchiga qarab ingichkalashtiradi (tomchi shakli).
 // uK[i] = maksimal cho'zilish (piksel). Nusxa/ikkinchi jism YO'Q.
@@ -55,6 +57,7 @@ float sdDrop(vec2 p, int i){
 float sdAll(vec2 p){
   float d = 1e5, bm = 1e5;
   vec4 bt = vec4(0.0);
+  vec2 bmat = vec2(1.0);
   bool all = uTileSize < 1.0;
   int tid = 0, n = uCount;
   if (!all) {
@@ -74,11 +77,12 @@ float sdAll(vec2 p){
       if (bd > d + max(uMerge, 0.5)) continue;
     }
     float di = sdDrop(p, i);
-    if (di < d) { bm = min(r.z, r.w); bt = shp(i, 3); }
+    if (di < d) { bm = min(r.z, r.w); bt = shp(i, 3); bmat = shp(i, 1).zw; }
     d = smin(d, di, max(uMerge, 0.5));
   }
   gMin = bm;
   gTint = bt;
+  gMat = bmat;
   return d;
 }
 vec3 bgAt(vec2 px, float lod){
@@ -105,11 +109,18 @@ void main(){
   float d = sdAll(px);
   float halfMin = gMin;
   vec4 tint = gTint;
+  vec2 gm = gMat;
+  // Material: bevel < 0 => "tiniq ichki" shisha (qirrasi xira va sinadi, markazi tiniq: ichidagi kontent o'qiladi)
+  bool clearIn = gm.x < 0.0;
+  gm.x = abs(gm.x);
+  float shA = 0.0, glassM = 0.0;
+  vec3 glassC = vec3(0.0);
 
   // Soya va kaustika: sahnaning o'ziga (tagidagi tugma/matnga ham) tushadi. Uzoqda hisoblanmaydi.
   if (d > 0.0 && d < (90.0 + uShadowOff * 2.0) * uDpr){
     float ds = sdAll(px - vec2(0.0, uShadowOff * uDpr));
     float sh = exp(-max(ds, 0.0) / ((10.0 + uShadowOff * 0.5) * uDpr)) * uShadowK * mix(1.0, 0.25, lum);
+    shA = sh;
     float dc = sdAll(px - vec2(0.0, uShadowOff * 1.9 * uDpr)) + 7.0 * uDpr;
     float caus = exp(-abs(dc) / (26.0 * uDpr)) * 0.2;
     col *= 1.0 - sh;
@@ -118,7 +129,7 @@ void main(){
 
   if (d < 1.5 * uDpr){
     // Chet kengligi jismning yarmidan oshmaydi: markaz DOIM tiniq (linza emas, oyna) qoladi
-    float zR = min(uBevel * uDpr, halfMin * 0.5);
+    float zR = min(uBevel * gm.x * uDpr, halfMin * 0.5);
     float depth = max(-d, 0.0);
     float e = 1.0;
     vec2 g = vec2(sdAll(px + vec2(e, 0.0)) - sdAll(px - vec2(e, 0.0)),
@@ -130,7 +141,7 @@ void main(){
     float dh = dd >= zR ? 0.0 : min((zR - dd) / sqrt(max(dd * (2.0 * zR - dd), 1.0)), 9.0);
     vec3 Nn = normalize(vec3(g * dh, 1.0));
 
-    float th = uThick * uThickMul;
+    float th = uThick * abs(gm.y) * uThickMul;
     float t = (0.25 * zR + h) * th / max(zR, 1.0) * uDpr;
     float dist = 1.15 * th * uDpr;
 
@@ -139,7 +150,8 @@ void main(){
     vec2 oG = refractOffset(uIOR,         Nn, t, dist, tirG);
     vec2 oB = refractOffset(uIOR + uDisp, Nn, t, dist, tirB);
 
-    float lod = uBlur + uExtraLod + (h / max(zR, 1.0)) * uBlur * 0.6;
+    float hz = h / max(zR, 1.0);
+    float lod = clearIn ? uExtraLod * 0.3 + (1.0 - hz) * uBlur * 0.9 : uBlur + uExtraLod + hz * uBlur * 0.6;
     float k = (0.6 + lod) * uDpr;
     vec2 pr = px + oR, pg = px + oG, pb = px + oB;
     vec3 tr = vec3(
@@ -172,13 +184,28 @@ void main(){
     vec3 spec = vec3(1.0) * (s1 + s2) * uSpec * uSpecMul * 1.3;
 
     vec3 glass = tr * (1.0 - F * 0.9) + refl + tirGlow + spec;
+    // Himoya: NaN/cheksiz qiymat yoki [0,1] dan chiqish (premultiplied alpha bilan qora/oq chiziq bo'ladi) shisha rangini buzmasin
+    if (any(isnan(glass)) || any(isinf(glass))) glass = col;
+    glass = clamp(glass, 0.0, 1.0);
 
     float edge = smoothstep(2.0 * uDpr, 0.0, depth) * smoothstep(-1.5 * uDpr, 0.0, -d);
     float topBias = clamp(dot(g, vec2(-0.6, -0.8)) * 0.5 + 0.5, 0.0, 1.0);
-    glass += vec3(1.0 - 1.6 * lum) * edge * (0.2 + 0.6 * topBias) * 0.8;   // yorug' fonda chet oq emas, qoraroq chiziq
+    glass += vec3(max(1.0 - 1.6 * lum, -0.28)) * edge * (0.2 + 0.6 * topBias) * 0.8;
+    glass = clamp(glass, 0.0, 1.0);   // yorug' fonda chet oq emas, qoraroq chiziq
 
     float m = 1.0 - smoothstep(-0.8 * uDpr, 1.2 * uDpr, d);
+    // "Ramka" rejimi (qalinlik ko'paytiruvchisi < 0): panel/jadval markazi shaffof qoladi, faqat qirra shisha bo'ladi
+    float ringA = gm.y < 0.0 ? 1.0 - smoothstep(zR * 0.55, zR * 1.2, depth) : 1.0;
+    m *= ringA;
+    glassC = glass;
+    glassM = m;
     col = mix(col, glass, m);
   }
-  outColor = vec4(col, 1.0);
+  if (uTransparent > 0.5) {
+    // Shaffof qatlam: shisha va soya chiziladi, qolgan joyda ilovaning o'zi jonli ko'rinadi (premultiplied alpha)
+    float a = glassM + shA * (1.0 - glassM);
+    outColor = vec4(glassC * glassM, a);
+  } else {
+    outColor = vec4(col, 1.0);
+  }
 }

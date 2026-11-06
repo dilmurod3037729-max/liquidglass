@@ -10,6 +10,7 @@ struct ShapeDesc {
     float w = 100, h = 60, radius = 30;   // mantiqiy piksel
     bool  draggable = true;                // false: doim oldingi qatlamda (panel, tugma)
     float tint[4] = {0, 0, 0, 0};          // rgb (0..1) + kuch: rangli shisha, 0 = tiniq
+    float bevel = 1, thick = 1;            // material: chet kengligi va qalinlik ko'paytiruvchisi (panel: 0.4, tugma: 1)
 };
 
 // Shisha materiali (web demo bilan bir xil ma'no va standart qiymatlar)

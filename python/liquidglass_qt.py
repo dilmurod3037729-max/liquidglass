@@ -1,35 +1,55 @@
-"""liquidglass_qt: PySide6 (Qt Widgets) ilovadagi HAQIQIY tugmalarni suyuq shisha materialga almashtiradi, ilova kodiga tegmasdan.
+"""liquidglass_qt: PySide6 (Qt Widgets) ilovasining ISTALGAN vidjetlarini suyuq shisha materialga aylantiradi, ilova kodiga tegmasdan.
 
-    from liquidglass_qt import attach
-    glass = attach(main_window)                       # barcha QPushButton shisha bo'ladi
-    glass = attach(main_window, params={"bevel": 14}) # shisha sozlamalari (web/README.md dagi nomlar)
+    from liquidglass_qt import attach, Glass
+    glass = attach(window)                                        # barcha QPushButton shisha (popup/dialoglar ham avtomatik)
+    glass = attach(window, rules=[
+        Glass(QPushButton),                                       # tugma: to'liq shisha, yozuvi ustida
+        Glass(lambda w: w.objectName() == "Card", "panel", radius=10),   # konteyner/karta: to'liq shisha (ichidagi kontent suratdan ko'rinadi)
+        Glass(QTableView, "table"),                               # jadval: shisha ramka, aylantirish jonli
+        Glass(QLineEdit, "input"),
+    ])
+    glass.add(some_widget, "panel")                               # istalgan vidjetni qo'lda qo'shish
+    glass.remove(some_widget)
 
-Qanday ishlaydi (Electron adapteri bilan bir xil g'oya):
-  1. tugmalar topiladi, asl ko'rinishi yashiriladi (opacity 0, lekin bosiladigan qoladi);
-  2. oyna surati olinadi (tugmalarsiz) va shisha qatlami (QOpenGLWidget, sichqonchaga shaffof) shuni sindiradi;
-  3. yozuvlar ustiga QLabel nusxa sifatida qo'yiladi; rangi shisha ostidagi fon yorug'ligiga moslashadi;
-  4. oyna o'zgarsa (bo'lim almashdi, matn yozildi) surat va shisha o'zi yangilanadi.
+Materiallar ("button" | "panel" | "table" | "input") yoki o'zingiznikini bering: Glass(sel, dict(bevel=0.5, thick=0.7, frame=True, hide=False)).
+
+Qanday ishlaydi:
+  - Shisha QOpenGLWidget qatlami SHAFFOF: faqat shisha va soya chiziladi, qolgan joyda ilovaning o'zi jonli (jadval aylanadi, matn yoziladi).
+  - "button" kabi hide=True vidjetlarning asl ko'rinishi yashiriladi (bosiladigan qoladi), o'rnida shisha va yozuv nusxasi turadi.
+  - "panel/table/input" (frame=True): vidjet o'z holida qoladi, ustiga shisha ramka (qirra sinishi, yorug'lik, soya) qo'yiladi.
+  - Sinish manbai: oyna surati (faqat o'zgarganda olinadi). Popup/dialoglar o'z qatlamini oladi.
 Shader: core/shaders/liquidglass.frag (veb va C++ bilan bir xil manba).
 """
 from __future__ import annotations
 
 import ctypes
 import re
+import sys
 import time
 from pathlib import Path
 
 from shiboken6 import VoidPtr
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QImage, QOpenGLContext, QPainter, QRegion, QVector2D
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QImage, QOpenGLContext, QPainter, QSurfaceFormat, QVector2D
 from PySide6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram, QOpenGLTexture, QOpenGLVertexArrayObject
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QGraphicsOpacityEffect, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
-                               QTextEdit, QWidget)
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QDialog, QGraphicsOpacityEffect, QLabel, QLineEdit, QPlainTextEdit,
+                               QPushButton, QTextEdit, QWidget)
 
 SHADER = Path(__file__).resolve().parent.parent / "core" / "shaders" / "liquidglass.frag"
 GL_TRIANGLES, GL_BLEND, GL_DEPTH_TEST = 0x0004, 0x0BE2, 0x0B71
 
-DEFAULT_PARAMS = dict(ior=1.55, thick=40.0, bevel=26.0, disp=0.04, blur=0.35, spec=1.1, absorb=0.2, merge=1.0)
+DEFAULT_PARAMS = dict(ior=1.55, thick=40.0, bevel=26.0, disp=0.04, blur=0.35, spec=1.1, absorb=0.2, merge=1.0, shadow=0.45)
+
+# Tayyor materiallar. bevel/thick: global qiymatga ko'paytiruvchi. frame: markazi shaffof (faqat qirra shisha).
+# hide: asl vidjet ko'rinmas bo'lib, o'rnida shisha + yozuv nusxasi turadi. hover: kursor ostida biroz kattalashadi.
+MATERIALS = {
+    "button": dict(bevel=1.0, thick=1.0, frame=False, hide=True, hover=True, tint=True, radius=None),
+    "panel": dict(bevel=-0.45, thick=0.3, frame=False, hide=False, hover=False, tint=False, radius=12.0),
+    "table": dict(bevel=-0.5, thick=0.4, frame=False, hide=False, hover=False, tint=False, radius=8.0),
+    "input": dict(bevel=0.5, thick=0.3, frame=True, hide=False, hover=False, tint=False, radius=None),
+}
+
 VERTEX = """#version 330 core
 void main(){
   vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
@@ -37,12 +57,47 @@ void main(){
 }"""
 
 
-# ───────────────────────── shisha sahnasi (qo'zg'almas shakllar + hover/bosish) ─────────────────────────
-class Shape:
-    __slots__ = ("x", "y", "w", "h", "radius", "tint", "hover", "press")
+class Glass:
+    """Qoida: qaysi vidjetlar (selector) qanday material (material) bilan shisha bo'ladi.
+    selector: vidjet sinfi (yoki sinflar tuple'i), objectName (str) yoki predikat (widget -> bool)."""
 
-    def __init__(self, x, y, w, h, radius, tint):
+    def __init__(self, selector=QPushButton, material="button", radius: float | None = None, **overrides):
+        base = MATERIALS[material] if isinstance(material, str) else material
+        self.selector = selector
+        self.mat = {**MATERIALS["button"], **base, **overrides}
+        if radius is not None:
+            self.mat["radius"] = radius
+
+    def matches(self, w: QWidget) -> bool:
+        s = self.selector
+        if isinstance(s, str):
+            return w.objectName() == s
+        if isinstance(s, (type, tuple)):
+            return isinstance(w, s)
+        return bool(s(w))
+
+
+# ───────────────────────── shisha sahnasi (qo'zg'almas shakllar + hover/bosish) ─────────────────────────
+def fixed_light(w) -> tuple[float, float]:
+    """Yagona yorug'lik manbai: displayning yuqori o'rtasida qo'zg'almas lampa. Oynaning displaydagi o'rniga qarab yo'nalish (-1..1) o'zgaradi;
+    sichqonchaga bog'liq emas (qayta chizish kerak emas, jismoniy jihatdan to'g'riroq)."""
+    scr = w.screen()
+    if scr is None:
+        return (0.0, -0.4)
+    g = scr.geometry()
+    c = w.mapToGlobal(w.rect().center())
+    hw, hh = max(g.width() / 2, 1), max(g.height() / 2, 1)
+    lx = max(-1.0, min(1.0, (g.center().x() - c.x()) / hw))
+    ly = max(-1.0, min(1.0, (g.top() - c.y()) / (2 * hh)))
+    return (lx, ly)
+
+
+class Shape:
+    __slots__ = ("x", "y", "w", "h", "radius", "tint", "bevel", "thick", "hoverable", "hover", "press")
+
+    def __init__(self, x, y, w, h, radius, tint, bevel=1.0, thick=1.0, hoverable=True):
         self.x, self.y, self.w, self.h, self.radius, self.tint = x, y, w, h, radius, tint
+        self.bevel, self.thick, self.hoverable = bevel, thick, hoverable   # thick < 0 = ramka rejimi
         self.hover = 0.0
         self.press = 0.0
 
@@ -61,8 +116,8 @@ class Scene:
         self.shapes.clear()
         self.hovered = self.pressed = -1
 
-    def add(self, x, y, w, h, radius, tint=(0.0, 0.0, 0.0, 0.0)) -> int:
-        self.shapes.append(Shape(x, y, w, h, radius, tint))
+    def add(self, x, y, w, h, radius, tint=(0.0, 0.0, 0.0, 0.0), bevel=1.0, thick=1.0, hoverable=True) -> int:
+        self.shapes.append(Shape(x, y, w, h, radius, tint, bevel, thick, hoverable))
         return len(self.shapes) - 1
 
     def step(self, dt: float) -> bool:
@@ -72,8 +127,8 @@ class Scene:
         n = 0
         while self._acc >= self.STEP and n < 8:
             for i, s in enumerate(self.shapes):
-                wh = 1.0 if self.hovered == i else 0.0
-                wp = 1.0 if self.pressed == i else 0.0
+                wh = 1.0 if (self.hovered == i and s.hoverable) else 0.0
+                wp = 1.0 if (self.pressed == i and s.hoverable) else 0.0
                 s.hover += (wh - s.hover) * self.HOVER_RATE
                 s.press += (wp - s.press) * self.PRESS_RATE
                 moving = moving or abs(wh - s.hover) > 0.002 or abs(wp - s.press) > 0.002
@@ -84,13 +139,14 @@ class Scene:
         return moving or self.pressed >= 0
 
     def pack(self, dpr: float) -> bytes:
-        """RGBA32F tekstura ma'lumoti (kenglik 4, balandlik = count): [rect][tail][rad,k,act,cho'zilish][tint]."""
+        """RGBA32F tekstura ma'lumoti (kenglik 4, balandlik = count): [rect][tail+material][rad,k,act,cho'zilish][tint]."""
         out = []
         for s in self.shapes:
             g = 1.0 + 0.03 * s.press + 0.012 * s.hover
             hw, hh = s.w / 2 * g * dpr, s.h / 2 * g * dpr
             reach = (0.55 * min(s.w, s.h) + 40.0) * dpr
-            out += [s.x * dpr, s.y * dpr, hw, hh, s.x * dpr, s.y * dpr, hw, hh, s.radius * g * dpr, reach, 1.0, 0.0, *s.tint]
+            out += [s.x * dpr, s.y * dpr, hw, hh, s.x * dpr, s.y * dpr, s.bevel, s.thick,
+                    s.radius * g * dpr, reach, 1.0, 0.0, *s.tint]
         if not out:
             return b""
         arr = (ctypes.c_float * len(out))(*out)   # o'zgaruvchida saqlanadi: vaqtinchalik massiv addressof'dan keyin o'chib ketardi
@@ -103,10 +159,13 @@ def _addr(buf) -> int:
 
 
 class GlassOverlay(QOpenGLWidget):
-    """Oyna ustidagi shaffof-sichqoncha QOpenGLWidget: sahna suratini sindiradi, shakllar ustida shisha chizadi."""
+    """Oyna ustidagi SHAFFOF, sichqonchaga o'tkazuvchan QOpenGLWidget: sahna suratini sindirib, faqat shisha va soyani chizadi."""
 
     def __init__(self, parent: QWidget, scene: Scene, params: dict):
         super().__init__(parent)
+        fmt = QSurfaceFormat(self.format())
+        fmt.setAlphaBufferSize(8)
+        self.setFormat(fmt)
         self.scene = scene
         self.params = params
         self.light = (0.0, 0.0)
@@ -115,6 +174,9 @@ class GlassOverlay(QOpenGLWidget):
         self._ready = False
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WA_NoSystemBackground)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_AlwaysStackOnTop)   # Qt faqat shunda qatlamni alfa bilan boshqa vidjetlar ustiga aralashtiradi
+        self.texts: list[tuple[QRectF, str, QFont, QColor, int]] = []   # shisha tugma yozuvlari: qatlamning o'zida chiziladi (u hamma narsa ustida)
         self._clock = QTimer(self)
         self._clock.setInterval(16)
         self._clock.timeout.connect(self._tick)
@@ -228,10 +290,12 @@ class GlassOverlay(QOpenGLWidget):
         fw, fh = int(self.width() * dpr), int(self.height() * dpr)
         if self._dirty_source:
             self._upload_scene()
-        if self.scene_tex is None:
+        f.glViewport(0, 0, fw, fh)
+        if self.scene_tex is None or not self.scene.shapes:
+            f.glClearColor(0.0, 0.0, 0.0, 0.0)
+            f.glClear(0x4000)   # GL_COLOR_BUFFER_BIT: butunlay shaffof
             return
         self._upload_shapes(dpr)
-        f.glViewport(0, 0, fw, fh)
         f.glDisable(GL_BLEND)
         f.glDisable(GL_DEPTH_TEST)
         p, q = self.prog, self.params
@@ -244,14 +308,22 @@ class GlassOverlay(QOpenGLWidget):
             self._u(name, int(val))
         self._u("uRes", QVector2D(fw, fh))
         self._u("uLight", QVector2D(*self.light))
-        for name, val in (("uTileSize", 0.0), ("uDpr", dpr), ("uMerge", q["merge"] * dpr), ("uFlip", 0.0), ("uShadowK", 0.55),
-                          ("uShadowOff", 26.0), ("uSpecMul", 1.0), ("uThickMul", 1.0), ("uExtraLod", 0.7),
+        for name, val in (("uTransparent", 1.0), ("uTileSize", 0.0), ("uDpr", dpr), ("uMerge", q["merge"] * dpr), ("uFlip", 0.0),
+                          ("uShadowK", q["shadow"]), ("uShadowOff", 26.0), ("uSpecMul", 1.0), ("uThickMul", 1.0), ("uExtraLod", 0.7),
                           ("uIOR", q["ior"]), ("uThick", q["thick"]), ("uBevel", q["bevel"]), ("uDisp", q["disp"]),
                           ("uBlur", q["blur"]), ("uSpec", q["spec"]), ("uAbs", q["absorb"])):
             self._u(name, float(val))
         f.glDrawArrays(GL_TRIANGLES, 0, 3)
         self.vao.release()
         p.release()
+        if self.texts:
+            qp = QPainter(self)
+            qp.setRenderHint(QPainter.TextAntialiasing)
+            for rect, text, font, color, align in self.texts:
+                qp.setFont(font)
+                qp.setPen(color)
+                qp.drawText(rect, align, text)
+            qp.end()
 
 
 # ───────────────────────── boshqaruvchi ─────────────────────────
@@ -268,50 +340,82 @@ def _luma(c: QColor) -> float:
 
 
 class GlassController(QObject):
-    def __init__(self, window: QWidget, selector=QPushButton, params: dict | None = None, radius: float | None = None,
-                 poll_ms: int = 80, min_size=(28, 22), idle_ms: int = 2500):
+    def __init__(self, window: QWidget, rules: list[Glass] | None = None, selector=QPushButton, params: dict | None = None,
+                 radius: float | None = None, poll_ms: int = 80, min_size=(28, 22), idle_ms: int = 2500):
         super().__init__(window)
         self.window = window
-        self.selector = selector
+        self.rules = list(rules) if rules else [Glass(selector, "button", radius)]
         self.params = {**DEFAULT_PARAMS, **(params or {})}
         self.min_size = min_size
         self.idle_ms = idle_ms   # o'zgarish hodisasi bo'lmasa ham shuncha vaqtda bir marta yangilash (0 = o'chiq)
-        self.radius = radius if radius is not None else self._app_radius()
+        self._app_radius = self._find_app_radius()
         self.scene = Scene()
         self.overlay = GlassOverlay(window, self.scene, self.params)
         self.items: list[dict] = []
-        self.labels: list[QLabel] = []
+        self.backdrop = False   # popup: oyna shaffof, sinish manbai oyna ORQASIDAGI jonli ekran
+        self.titlebar = False   # popup: sarlavha satri shisha qatlamning o'zida chiziladi
+        self.header = 0
+        self._back_img: QImage | None = None
+        self._extra: list[tuple[QWidget, Glass]] = []   # add() bilan qo'lda qo'shilganlar
         self._tints: dict[int, tuple] = {}
         self._sig = None
-        self._last: QImage | None = None
+        self._dirty = True
+        self._own: set[int] = {id(self.overlay)}   # shisha qatlami, yozuvlar va shisha tugmalar: ularning chizilishi "o'zgarish" emas
+        self._buf: QImage | None = None
+        self._last_refresh = 0.0
+        self._min_gap = max(poll_ms, 40) / 1000.0
         self.overlay.setGeometry(window.rect())
         self.overlay.show()
         window.installEventFilter(self)
         QApplication.instance().installEventFilter(self)
-        self._dirty = True
-        self._own: set[int] = set()   # shisha qatlami, yozuvlar va shisha tugmalar: ularning chizilishi "o'zgarish" emas
-        self._buf: QImage | None = None
-        self._last_refresh = 0.0
-        self._min_gap = max(poll_ms, 40) / 1000.0
         self._timer = QTimer(self)
         self._timer.setInterval(30)
         self._timer.timeout.connect(self._poll)
         self._timer.start()
+        self._back_timer = QTimer(self)
+        self._back_timer.setInterval(40)
+        self._back_timer.timeout.connect(self._back_poll)
+        self._burst()   # yaratilgandan keyin: vidjetlar (ayniqsa popup) bir oz keyin tayyor bo'ladi
+
+    # --- ommaviy API ---
+    def add(self, widget: QWidget, material="panel", radius: float | None = None, **overrides):
+        """Istalgan vidjetni shisha qilish (qoida selektoriga qaramay)."""
+        self._extra.append((widget, Glass(lambda w, t=widget: w is t, material, radius, **overrides)))
+        self._dirty = True
+
+    def remove(self, widget: QWidget):
+        self._extra = [(w, r) for (w, r) in self._extra if w is not widget]
+        if isinstance(widget.graphicsEffect(), QGraphicsOpacityEffect):
+            widget.setGraphicsEffect(None)
+        self._dirty = True
+
+    def set_params(self, **kw):
+        self.params.update(kw)
+        self.overlay.wake()
 
     @staticmethod
-    def _app_radius() -> float:
+    def _find_app_radius() -> float:
         m = re.search(r"QPushButton\s*\{[^}]*?border-radius:\s*(\d+)px", QApplication.instance().styleSheet() or "")
         return float(m.group(1)) if m else 8.0
 
     # --- topish ---
-    def _collect(self) -> list[QPushButton]:
-        out = []
-        for b in self.window.findChildren(self.selector):
-            if not b.isVisible() or not b.isEnabled():
+    def _collect(self) -> list[tuple[QWidget, dict]]:
+        out, seen = [], set()
+        pairs = list(self._extra)   # qo'lda qo'shilganlar (add) avval
+        everyone = self.window.findChildren(QWidget)
+        for rule in self.rules:
+            pairs += [(w, rule) for w in everyone]
+        for w, rule in pairs:
+            if id(w) in seen or w is self.overlay or not rule.matches(w):
                 continue
-            if b.width() < self.min_size[0] or b.height() < self.min_size[1]:
+            if not w.isVisible() or w.window() is not self.window:   # boshqa oynaning (popup) vidjeti emas
                 continue
-            out.append(b)
+            if rule.mat["hide"] and not w.isEnabled():
+                continue
+            if w.width() < self.min_size[0] or w.height() < self.min_size[1]:
+                continue
+            seen.add(id(w))
+            out.append((w, rule.mat))
         return out
 
     def _rect(self, b: QWidget) -> QRect:
@@ -362,29 +466,53 @@ class GlassController(QObject):
             self._buf = QImage(size, QImage.Format_RGBA8888_Premultiplied)
         buf = self._buf
         buf.setDevicePixelRatio(dpr)
-        buf.fill(w.palette().window().color())
+        if self.backdrop:
+            self._paint_backdrop(buf)
+        else:
+            buf.fill(w.palette().window().color())
         # Butun oyna (stylesheet foni ham) chiziladi; shisha qatlami va yozuvlar shu paytda yashiriladi. Paint hodisalari
         # o'zgarish belgisi emas, shuning uchun yashirish/ko'rsatish yangi yangilanishni chaqirmaydi.
         self.overlay.hide()
-        for lab in self.labels:
-            lab.hide()
         painter = QPainter(buf)
         w.render(painter, QPoint(0, 0))
         painter.end()
         self.overlay.show()
-        for lab in self.labels:
-            lab.show()
         return buf
+
+    def _grab_behind(self) -> QImage | None:
+        w = self.window
+        exclude_from_capture(w)
+        dpr = w.devicePixelRatioF()
+        x, y = _client_origin(w)
+        return grab_screen(x, y, int(w.width() * dpr), int(w.height() * dpr))
+
+    def _back_poll(self):
+        """Oyna ORQASIDAGI ekran o'zgarsa (video, boshqa oyna, siljitish) sinish manbai yangilanadi."""
+        if not self.window.isVisible():
+            return
+        img = self._grab_behind()
+        if img is not None and img != self._back_img:
+            self._back_img = img
+            self._dirty = True
+
+    def _paint_backdrop(self, buf: QImage):
+        w = self.window
+        if self._back_img is None:
+            self._back_img = self._grab_behind()
+        p = QPainter(buf)
+        if self._back_img is not None:
+            p.drawImage(QRect(0, 0, w.width(), w.height()), self._back_img)
+        p.end()
 
     def refresh(self):
         w = self.window
         if not w.isVisible():
             return
-        buttons = self._collect()
-        sig = tuple((id(b), self._rect(b).getRect(), b.text()) for b in buttons)
+        found = self._collect()
+        sig = tuple((id(x), self._rect(x).getRect(), x.text() if hasattr(x, "text") and mat["hide"] else "") for x, mat in found)
         rebuilt = sig != self._sig
         if rebuilt:
-            self._rebuild(buttons)
+            self._rebuild(found)
             self._sig = sig
         self._dirty = False
         self._last_refresh = time.perf_counter()
@@ -392,49 +520,44 @@ class GlassController(QObject):
         if rebuilt:   # raise_/setGeometry sahifani qayta chizdiradi: faqat kerak bo'lganda
             self.overlay.setGeometry(w.rect())
             self.overlay.raise_()
-            for lab in self.labels:
-                lab.raise_()
         elif self.overlay.geometry() != w.rect():
             self.overlay.setGeometry(w.rect())
-        if True:
-            self._recolor_labels(img)
-            self.overlay.set_source(img)
-            self.overlay.wake()
+        self._recolor_texts(img)
+        self.overlay.set_source(img)
+        self.overlay.wake()
 
-    def _rebuild(self, buttons: list[QPushButton]):
-        for it in self.items:   # eskilarni tiklaymiz
-            if it["btn"] not in buttons:
-                it["btn"].setGraphicsEffect(None)
-        for lab in self.labels:
-            lab.deleteLater()
-        self.labels.clear()
+    def _rebuild(self, found: list[tuple[QWidget, dict]]):
+        keep = {id(x) for x, _ in found}
+        for it in self.items:   # endi shisha bo'lmaganlarni asl holiga qaytaramiz
+            if id(it["w"]) not in keep and isinstance(it["w"].graphicsEffect(), QGraphicsOpacityEffect):
+                it["w"].setGraphicsEffect(None)
         self.items.clear()
         self.scene.clear()
         self._own = {id(self.overlay)}
-        for b in buttons:
-            tint = self._tint_of(b)      # asl ko'rinishda rang olinadi, keyin yashiramiz
-            if not isinstance(b.graphicsEffect(), QGraphicsOpacityEffect):
-                eff = QGraphicsOpacityEffect(b)
-                eff.setOpacity(0.0)
-                b.setGraphicsEffect(eff)
-            r = self._rect(b)
+        for x, mat in found:
+            r = self._rect(x)
+            tint = self._tint_of(x) if (mat["tint"] and mat["hide"]) else (0.0, 0.0, 0.0, 0.0)   # rang asl ko'rinishda olinadi, keyin yashiramiz
+            radius = mat["radius"] if mat["radius"] is not None else self._app_radius
+            thick = -abs(mat["thick"]) if mat["frame"] else abs(mat["thick"])
             idx = self.scene.add(r.x() + r.width() / 2, r.y() + r.height() / 2, r.width(), r.height(),
-                                 min(self.radius, r.height() / 2), tint)
-            lab = QLabel(b.text(), self.window)
-            lab.setFont(b.font())
-            lab.setAlignment(Qt.AlignCenter)
-            lab.setGeometry(r)
-            lab.setAttribute(Qt.WA_TransparentForMouseEvents)
-            lab.setStyleSheet("background: transparent;")
-            lab.show()
-            self._own.add(id(lab))
-            self._own.add(id(b))
-            self.labels.append(lab)
-            self.items.append({"btn": b, "rect": r, "tint": tint, "idx": idx})
+                                 min(radius, r.height() / 2, r.width() / 2), tint, mat["bevel"], thick, mat["hover"])
+            item = {"w": x, "rect": r, "tint": tint, "idx": idx, "mat": mat, "text": None}
+            if mat["hide"]:
+                if not isinstance(x.graphicsEffect(), QGraphicsOpacityEffect):
+                    eff = QGraphicsOpacityEffect(x)
+                    eff.setOpacity(0.0)
+                    x.setGraphicsEffect(eff)
+                self._own.add(id(x))
+                if hasattr(x, "text"):
+                    item["text"] = (x.text(), x.font())
+            self.items.append(item)
 
-    def _recolor_labels(self, img: QImage):
+    def _recolor_texts(self, img: QImage):
         dpr = img.devicePixelRatio() or 1.0
-        for it, lab in zip(self.items, self.labels):
+        texts = []
+        for it in self.items:
+            if it["text"] is None:
+                continue
             r, t = it["rect"], it["tint"]
             if t[3] > 0.35:
                 dark = (0.299 * t[0] + 0.587 * t[1] + 0.114 * t[2]) > 0.6
@@ -442,14 +565,22 @@ class GlassController(QObject):
                 sx = int(min(max(r.x() + r.width() / 2, 0), self.window.width() - 1) * dpr)
                 sy = int(min(max(r.y() + 2, 0), self.window.height() - 1) * dpr)
                 dark = _luma(QColor(img.pixel(sx, sy))) > 0.55
-            col = "#0f172a" if dark else "#ffffff"
-            lab.setStyleSheet(f"background: transparent; color: {col};")
+            texts.append((QRectF(r), it["text"][0], it["text"][1], QColor("#0f172a" if dark else "#ffffff"), int(Qt.AlignCenter)))
+        if self.titlebar:
+            w = self.window
+            dark = _luma(QColor(img.pixel(int(w.width() * dpr * 0.5), int(self.header * dpr * 0.5)))) > 0.55
+            col = QColor("#0f172a" if dark else "#ffffff")
+            f = QFont(w.font())
+            f.setBold(True)
+            texts.append((QRectF(14, 0, w.width() - 60, self.header), w.windowTitle(), f, col, int(Qt.AlignVCenter | Qt.AlignLeft)))
+            texts.append((QRectF(w.width() - self.header - 6, 0, self.header, self.header), "\u2715", w.font(), col, int(Qt.AlignCenter)))
+        self.overlay.texts = texts
 
     # --- hodisalar ---
     def _index_at(self, global_pos) -> int:
         p = self.window.mapFromGlobal(global_pos)
-        for it in self.items:
-            if it["rect"].contains(p):
+        for it in reversed(self.items):   # ustma-ust bo'lsa yuqoridagisi
+            if it["mat"]["hover"] and it["rect"].contains(p):
                 return it["idx"]
         return -1
 
@@ -459,8 +590,20 @@ class GlassController(QObject):
         except RuntimeError:   # dastur yopilayotganda oyna o'chirilgan bo'lishi mumkin
             return False
 
+    def _mine(self, obj) -> bool:
+        """Vidjet shu oynaga tegishlimi (boshqa oyna, masalan popup, bu yerga kirmaydi)."""
+        return isinstance(obj, QWidget) and obj.window() is self.window and obj is not self.window
+
     def _filter(self, obj, ev):
         t = ev.type()
+        if self.titlebar and t == QEvent.MouseButtonPress and hasattr(ev, "globalPosition") and (obj is self.window or self._mine(obj)):
+            p = self.window.mapFromGlobal(ev.globalPosition().toPoint())
+            if p.y() < self.header:
+                if p.x() > self.window.width() - self.header - 6:
+                    self.window.close()
+                elif self.window.windowHandle():
+                    self.window.windowHandle().startSystemMove()
+                return True
         if obj is self.window and t in (QEvent.Resize, QEvent.Show):
             self.overlay.setGeometry(self.window.rect())
             self._dirty = True
@@ -470,23 +613,127 @@ class GlassController(QObject):
                 self.scene.hovered = i
                 self.overlay.wake()
             p = self.window.mapFromGlobal(ev.globalPosition().toPoint())
-            self.overlay.light = ((p.x() / max(self.window.width(), 1) - 0.5) * 2, (p.y() / max(self.window.height(), 1) - 0.5) * 2)
+            self.overlay.light = fixed_light(self.window)
         elif t == QEvent.MouseButtonPress and hasattr(ev, "globalPosition"):
             i = self._index_at(ev.globalPosition().toPoint())
             if i >= 0:
                 self.scene.pressed = i
                 self.overlay.wake()
-        elif t in _WATCH and isinstance(obj, QWidget) and id(obj) not in self._own and obj is not self.window and self.window.isAncestorOf(obj):
+            if self._mine(obj):
+                self._burst()
+        elif t in _WATCH and self._mine(obj) and id(obj) not in self._own and obj is not self.window:
             self._dirty = True   # ilova tuzilmasi o'zgardi: surat qayta olinadi
-        elif t in _INPUT and isinstance(obj, QWidget) and obj is not self.overlay and self.window.isAncestorOf(obj):
+        elif t in _INPUT and self._mine(obj) and obj is not self.overlay:
+            if t == QEvent.MouseButtonRelease and self.scene.pressed >= 0:
+                self.scene.pressed = -1
+                self.overlay.wake()
             self._burst()
-        elif t == QEvent.MouseButtonRelease and self.scene.pressed >= 0:
-            self.scene.pressed = -1
-            self.overlay.wake()
-            self._dirty = True
         return False
 
 
-def attach(window: QWidget, **kwargs) -> GlassController:
-    """Oynadagi tugmalarni shisha qiladi. kwargs: selector (sinf), params (dict), radius (px), poll_ms."""
-    return GlassController(window, **kwargs)
+# ───────────────────────── popup/dialoglar ─────────────────────────
+def _client_origin(w: QWidget) -> tuple[int, int]:
+    """Oyna ichki maydonining ekrandagi chap-yuqori nuqtasi (haqiqiy piksel, ko'p monitorda ham to'g'ri)."""
+    pt = (ctypes.c_long * 2)(0, 0)
+    ctypes.windll.user32.ClientToScreen(ctypes.c_void_p(int(w.winId())), ctypes.byref(pt))
+    return pt[0], pt[1]
+
+
+def exclude_from_capture(win: QWidget) -> bool:
+    """Oynamiz ekran suratiga (BitBlt/Graphics Capture) tushmaydi: orqa fon olinganda o'zimiz ichiga kirib qolmaymiz (WDA_EXCLUDEFROMCAPTURE)."""
+    if sys.platform != "win32":
+        return False
+    hwnd = ctypes.c_void_p(int(win.winId()))
+    cur = ctypes.c_uint32(0)
+    if ctypes.windll.user32.GetWindowDisplayAffinity(hwnd, ctypes.byref(cur)) and cur.value == 0x11:
+        return True
+    return bool(ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11))   # Qt oynani qayta yaratsa bayroq yo'qoladi: har safar tekshiramiz
+
+
+def grab_screen(x: int, y: int, w: int, h: int) -> QImage | None:
+    """Ish stoli (layered oynalar va ikkinchi monitor ham) jonli surati: GDI BitBlt + CAPTUREBLT."""
+    if sys.platform != "win32" or w <= 0 or h <= 0:
+        return None
+    u, g = ctypes.windll.user32, ctypes.windll.gdi32
+    u.GetDC.restype = ctypes.c_void_p
+    g.CreateCompatibleDC.restype = ctypes.c_void_p
+    g.CreateDIBSection.restype = ctypes.c_void_p
+    g.SelectObject.restype = ctypes.c_void_p
+    hdc = u.GetDC(None)
+    mem = g.CreateCompatibleDC(ctypes.c_void_p(hdc))
+    bmi = (ctypes.c_uint32 * 11)(40, w, (-h) & 0xFFFFFFFF, 1 | (32 << 16), 0, 0, 0, 0, 0, 0, 0)   # BITMAPINFOHEADER, yuqoridan pastga
+    bits = ctypes.c_void_p()
+    hbm = g.CreateDIBSection(ctypes.c_void_p(hdc), ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
+    old = g.SelectObject(ctypes.c_void_p(mem), ctypes.c_void_p(hbm))
+    g.BitBlt(ctypes.c_void_p(mem), 0, 0, w, h, ctypes.c_void_p(hdc), x, y, 0x00CC0020 | 0x40000000)   # SRCCOPY | CAPTUREBLT
+    img = QImage(ctypes.string_at(bits, w * h * 4), w, h, w * 4, QImage.Format_RGB32).copy()
+    g.SelectObject(ctypes.c_void_p(mem), ctypes.c_void_p(old))
+    g.DeleteObject(ctypes.c_void_p(hbm))
+    g.DeleteDC(ctypes.c_void_p(mem))
+    u.ReleaseDC(None, ctypes.c_void_p(hdc))
+    return img
+
+
+def make_translucent(win: QWidget, tint: str = "rgba(255,255,255,90)"):
+    """Popup oynasini shaffof qiladi (orqasi ko'rinadi); shisha qatlami shu orqa fonni sindiradi."""
+    win.setAttribute(Qt.WA_TranslucentBackground)
+    win.setStyleSheet(f"QDialog {{ background: {tint}; }}")
+
+
+class _PopupWatcher(QObject):
+    """Ilovadagi har bir QDialog/QMessageBox/popup ochilganda unga ham shisha qatlami ulaydi (o'zining oynasi, o'zining qatlami)."""
+
+    def __init__(self, app: QApplication, rules, params, kwargs, backdrop: bool, native: bool = False):
+        super().__init__(app)
+        self.rules, self.params, self.kwargs, self.backdrop, self.native = rules, params, kwargs, backdrop, native
+        self.controllers: dict[int, GlassController] = {}
+        app.installEventFilter(self)
+
+    def eventFilter(self, obj, ev):
+        try:
+            if ev.type() == QEvent.Show and isinstance(obj, QDialog) and obj.isWindow() and id(obj) not in self.controllers:
+                key = id(obj)
+                self.controllers[key] = None   # oldindan band qilamiz: konstruktor ichida qayta kiruvchi Show hodisasi ikkinchi qatlam yaratmasin
+                if self.native:
+                    from liquidglass_win import NativeController, make_popup
+                    make_popup(obj, under=True)
+                    self.controllers[key] = ctl = NativeController(obj, rules=self.rules, params=self.params, under=True, popup=True, **self.kwargs)
+                    ctl.add(obj, dict(MATERIALS["panel"], bevel=0.21, thick=0.5, frame=False), radius=16)   # oynaning o'zi: shaffof shisha, faqat sinadigan qirra
+                    obj.destroyed.connect(lambda *_a, k=key: self.controllers.pop(k, None))
+                    return False
+                if self.backdrop and sys.platform == "win32":
+                    make_translucent(obj)
+                    obj.setWindowFlag(Qt.FramelessWindowHint, True)   # Windows sarlavhasi o'rniga shisha sarlavha
+                    lay = obj.layout()
+                    if lay:
+                        m = lay.contentsMargins()
+                        lay.setContentsMargins(m.left(), m.top() + 32, m.right(), m.bottom())
+                    obj.show()
+                    exclude_from_capture(obj)
+                self.controllers[key] = ctl = GlassController(obj, rules=self.rules, params=self.params, **self.kwargs)
+                if self.backdrop and sys.platform == "win32":
+                    ctl.backdrop, ctl.titlebar, ctl.header = True, True, 32
+                    ctl._back_timer.start()
+                    ctl.add(obj, "panel", radius=10)   # oynaning o'zi ham shisha
+                obj.destroyed.connect(lambda *_a, k=key: self.controllers.pop(k, None))
+        except RuntimeError:
+            pass
+        return False
+
+
+def attach(window: QWidget, rules: list[Glass] | None = None, params: dict | None = None, popups: bool = True, popup_backdrop: bool = True, **kwargs) -> GlassController:
+    """Oynadagi vidjetlarni shisha qiladi. rules: [Glass(selector, material, radius)...] (standart: barcha QPushButton).
+    popups=True: keyin ochiladigan dialog/popuplar ham avtomatik shisha oladi; popup_backdrop=True: ularning oynasi shaffof va shisha bo'ladi (orqasidagi ekranni sindiradi). kwargs: poll_ms, idle_ms, min_size."""
+    backend = kwargs.pop("backend", "auto")   # "auto": Windows'da native (GPU), aks holda OpenGL qatlam; "gl": OpenGL majburan
+    native = False
+    if backend != "gl":
+        try:
+            from liquidglass_win import NativeController, available
+            native = available()
+        except ImportError:
+            native = False
+    ctl = NativeController(window, rules=rules, params=params, **kwargs) if native else GlassController(window, rules=rules, params=params, **kwargs)
+    app = QApplication.instance()
+    if popups and not getattr(app, "_lg_popups", None):
+        app._lg_popups = _PopupWatcher(app, ctl.rules, ctl.params, kwargs, popup_backdrop, native)
+    return ctl

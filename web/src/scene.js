@@ -49,9 +49,9 @@ export class Scene {
     this.acc = 0;
   }
 
-  add({ w = 100, h = 60, radius = 30, draggable = true, tint = [0, 0, 0, 0] } = {}, pos = { x: 0, y: 0 }) {
+  add({ w = 100, h = 60, radius = 30, draggable = true, tint = [0, 0, 0, 0], bevel = 1, thick = 1 } = {}, pos = { x: 0, y: 0 }) {
     if (this.s.length >= MAX_SHAPES) return -1;
-    this.s.push({ w, h, radius, draggable, tint, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, hover: 0, focus: 1 });
+    this.s.push({ w, h, radius, draggable, tint, bevel, thick, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y, ex: pos.x, ey: pos.y, vx: 0, vy: 0, hvx: 0, hvy: 0, press: 0, hover: 0, focus: 1 });
     if (this.focusIdx < 0 && draggable) this.focusIdx = this.s.length - 1;
     return this.s.length - 1;
   }
@@ -61,6 +61,8 @@ export class Scene {
   setTarget(id, p) { this.s[id].tx = p.x; this.s[id].ty = p.y; }
   /** Shisha rangi: [r, g, b, kuch] (0..1). Kuch 0 = tiniq shisha */
   setTint(id, t) { this.s[id].tint = [t[0], t[1], t[2], t[3]]; }
+  /** Material: chet kengligi va qalinlik ko'paytiruvchisi (katta panel uchun ~0.4, tugma uchun 1) */
+  setMaterial(id, bevelScale, thickScale) { this.s[id].bevel = bevelScale; this.s[id].thick = thickScale; }
   setHovered(id) { this.hovered = id; }   // kursor ostidagi shakl (-1 = yo'q): biroz kattalashadi
   /** Zudlik bilan joylashtirish (lagsiz): sahifa surilganda asl elementga ergashish uchun */
   teleport(id, x, y) { const s = this.s[id]; s.x = s.tx = s.ex = x; s.y = s.ty = s.ey = y; s.hvx = s.hvy = s.vx = s.vy = 0; }
@@ -169,7 +171,7 @@ export class Scene {
     idx.forEach((i, j) => {
       const s = this.s[i], g = this.#grow(s), o = j * 16;
       u.data.set([s.x * dpr, s.y * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], o);
-      u.data.set([s.ex * dpr, s.ey * dpr, s.w / 2 * g * dpr, s.h / 2 * g * dpr], o + 4);
+      u.data.set([s.ex * dpr, s.ey * dpr, s.bevel, s.thick], o + 4);   // zw = material (shader o'qiydi)
       u.data[o + 8] = s.radius * g * dpr;
       u.data[o + 9] = this.#reach(s) * dpr;
       u.data[o + 10] = 1;

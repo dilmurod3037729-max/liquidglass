@@ -120,6 +120,13 @@ int main() {
     const PassUniforms tp = tn.pack(Pass::Front, 1.0f);
     CHECK(std::fabs(tp.tint(0)[0] - 0.9f) < 1e-6f && std::fabs(tp.tint(0)[3] - 0.35f) < 1e-6f);
 
+    // Material: chet/qalinlik ko'paytiruvchisi paketda dum zw da
+    Scene mt;
+    mt.add({100, 40, 20, false}, {0, 0});
+    mt.setMaterial(0, 0.4f, 0.7f);
+    const PassUniforms mp = mt.pack(Pass::Front, 1.0f);
+    CHECK(std::fabs(mp.tail(0)[2] - 0.4f) < 1e-6f && std::fabs(mp.tail(0)[3] - 0.7f) < 1e-6f);
+
     std::printf(fails ? "%d xato\n" : "hammasi o'tdi\n", fails);
     return fails ? 1 : 0;
 }

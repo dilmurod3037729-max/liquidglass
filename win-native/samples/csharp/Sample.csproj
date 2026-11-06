@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\dotnet\LiquidGlass.cs" Link="LiquidGlass.cs" />
+    <None Include="..\..\lgwin.dll" Link="lgwin.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
