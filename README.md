@@ -11,6 +11,7 @@ and https://dilmurod3037729-max.github.io/liquidglass/web/demo/water.html (water
 - [`web/`](web/) is the dependency-free WebGL2 library (ES modules). Start with [`web/README.md`](web/README.md) (documentation is in Uzbek).
 - [`core/`](core/) is the C++17 core (shapes, physics, shader source of truth) used to verify the JS port with golden tests.
   A native OpenGL 3.3 backend with a GLFW + Dear ImGui demo lives in [`core/native`](core/native) and a Qt 6 backend (QOpenGLWidget) in [`core/qt`](core/qt).
+- [`python/`](python/) is a PySide6 module that turns the real buttons of an existing Qt Widgets app into glass without touching its code.
 
 ```js
 import { createLiquidGlass } from './web/src/index.js';
