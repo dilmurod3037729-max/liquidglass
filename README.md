@@ -31,6 +31,17 @@ in the GIF the background stays perfectly still while the glass moves over it.
 - **Cheap when idle.** Only changes under the popup trigger a redraw (WGC dirty regions). One popup, idle, on one Windows 11
   machine with an NVIDIA GPU: about 3.5% of one CPU core, popup's own GPU use under 1% (GPU busy-time rose from 8% to about 13%).
 
+### Demo: a terminal built on it
+
+![GlassTerm: a terminal rendered as thick liquid glass](docs/native/terminal.png)
+
+![dragging the glass terminal over a scene](docs/native/terminal.gif)
+
+A proof that the backend is usable for real work: a small terminal (PySide6, ConPTY, `pyte`) whose whole window is glass. The text
+is drawn by the app and sits on top of the glass; its colour adapts to what is behind it, and the glass refracts whatever lies under it,
+including other glass windows. The pictures use a synthetic scene and a throwaway demo folder. The terminal's source is not part of this
+repository yet.
+
 Try it (needs Visual Studio 2022 with the C++ workload and the Windows SDK; paths in `win-native/build_dll.bat` are for
 the author's machine, adjust them):
 
