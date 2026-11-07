@@ -13,6 +13,37 @@ and https://dilmurod3037729-max.github.io/liquidglass/web/demo/water.html (water
   A native OpenGL 3.3 backend with a GLFW + Dear ImGui demo lives in [`core/native`](core/native) and a Qt 6 backend (QOpenGLWidget) in [`core/qt`](core/qt).
 - [`python/`](python/) is a PySide6 module that turns the real buttons of an existing Qt Widgets app into glass without touching its code.
 
+## Native Windows backend
+
+![glass panel over a colourful scene](docs/native/hero.png)
+
+![dragging the glass: the scene behind stays still](docs/native/drag.gif)
+
+A real-time glass panel for any Qt (PySide6) window on Windows: everything behind it, including other applications, bends
+at the edge like a thick lens, with dispersion, frost and a rim highlight. The picture above is a synthetic scene;
+in the GIF the background stays perfectly still while the glass moves over it.
+
+- **Per-window backdrop.** Each window under the popup is captured separately with Windows.Graphics.Capture, so the glass never
+  sees itself (no feedback loop, no stale or frozen backdrop) and nothing needs administrator rights or injection.
+- **Fixed overlay.** The overlay window never moves; the glass is drawn inside its swap chain. Moving a window and updating its
+  image used to land on different frames, so the backdrop jumped while dragging. Measured with a screen-capture test
+  (hue ramp behind a popup dragged at about 2000 px/s): 9-14 of 34 frames were visibly wrong before, 0 in three runs after.
+- **Cheap when idle.** Only changes under the popup trigger a redraw (WGC dirty regions). One popup, idle, on one Windows 11
+  machine with an NVIDIA GPU: about 3.5% of one CPU core, popup's own GPU use under 1% (GPU busy-time rose from 8% to about 13%).
+
+Try it (needs Visual Studio 2022 with the C++ workload and the Windows SDK; paths in `win-native/build_dll.bat` are for
+the author's machine, adjust them):
+
+```
+win-native\build_dll.bat
+python python\popup_demo.py
+```
+
+Limitations, honestly: Windows only (tested on Windows 11; Windows 10 is untested and may show the yellow capture border),
+protected windows (DRM video) are not visible behind the glass, window shadows are not part of the backdrop, and each popup
+has a full-desktop transparent overlay, so several popups cost proportionally more (not measured). The glass needs a hardware
+D3D11 GPU.
+
 ```js
 import { createLiquidGlass } from './web/src/index.js';
 

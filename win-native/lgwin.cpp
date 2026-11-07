@@ -442,9 +442,11 @@ static void dumpBackbuffer(Shared& S, Ov* o) {
     D3D11_MAPPED_SUBRESOURCE mp;
     if (SUCCEEDED(S.ctx->Map(st.Get(), 0, D3D11_MAP_READ, 0, &mp))) {
         if (o->dumpWhich == 3) {   // alfa xaritasi: qaysi piksellar shaffof (haqiqiy ish stoli ko'rinadi)
-            std::vector<uint8_t> g((size_t)d.Width * d.Height * 4);
-            for (UINT y = 0; y < d.Height; y++) for (UINT x = 0; x < d.Width; x++) { uint8_t al = ((const uint8_t*)mp.pData)[(size_t)y * mp.RowPitch + x * 4 + 3]; size_t k = ((size_t)y * d.Width + x) * 4; g[k] = g[k + 1] = g[k + 2] = al; g[k + 3] = 255; }
-            saveBmp(o->dumpPath.c_str(), g.data(), d.Width, d.Height, d.Width * 4);
+            UINT ox = o->fixedWin ? (UINT)std::max<long>(0, o->last.x - o->VX) : 0, oy = o->fixedWin ? (UINT)std::max<long>(0, o->last.y - o->VY) : 0;   // katta swapchain: faqat shisha to'rtburchagi
+            UINT gw = o->fixedWin ? std::min<UINT>((UINT)o->W, d.Width - ox) : d.Width, gh = o->fixedWin ? std::min<UINT>((UINT)o->H, d.Height - oy) : d.Height;
+            std::vector<uint8_t> g((size_t)gw * gh * 4);
+            for (UINT y = 0; y < gh; y++) for (UINT x = 0; x < gw; x++) { uint8_t al = ((const uint8_t*)mp.pData)[(size_t)(y + oy) * mp.RowPitch + (x + ox) * 4 + 3]; size_t k = ((size_t)y * gw + x) * 4; g[k] = g[k + 1] = g[k + 2] = al; g[k + 3] = 255; }
+            saveBmp(o->dumpPath.c_str(), g.data(), gw, gh, gw * 4);
         } else if (o->fixedWin && o->dumpWhich == 0) {   // katta swapchain: faqat shisha to'rtburchagi
             long ox = o->last.x - o->VX, oy = o->last.y - o->VY;
             if (ox >= 0 && oy >= 0 && ox + o->W <= (long)d.Width && oy + o->H <= (long)d.Height) saveBmp(o->dumpPath.c_str(), (const uint8_t*)mp.pData + (size_t)oy * mp.RowPitch + (size_t)ox * 4, o->W, o->H, mp.RowPitch);
