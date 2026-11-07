@@ -29,6 +29,8 @@ def _load():
             dll.lg_create.argtypes = [ctypes.c_void_p]
             dll.lg_set_hold.argtypes = [ctypes.c_void_p, ctypes.c_int]
             dll.lg_set_backend.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            dll.lg_set_look.argtypes = [ctypes.c_void_p, ctypes.c_float, ctypes.c_float]
+            dll.lg_set_look2.argtypes = [ctypes.c_void_p, ctypes.c_float, ctypes.c_float]
             dll.lg_set_frost.argtypes = [ctypes.c_void_p, ctypes.c_float]
             dll.lg_set_edge.argtypes = [ctypes.c_void_p, ctypes.c_float]
             dll.lg_luma.argtypes = [ctypes.c_void_p]
@@ -75,7 +77,7 @@ class NativeController(GlassController):
     """GlassController bilan bir xil API (add/remove/set_params), lekin shisha lgwin.dll da chiziladi."""
 
     def __init__(self, window: QWidget, rules: list[Glass] | None = None, selector=QPushButton, params: dict | None = None,
-                 radius: float | None = None, min_size=(28, 22), under: bool = False, capture: str = "visible", popup: bool = False, frost: float | None = None, edge: float = 0.0, backdrop: str | None = None, **_ignored):
+                 radius: float | None = None, min_size=(28, 22), under: bool = False, capture: str = "visible", popup: bool = False, frost: float | None = None, edge: float = 0.0, backdrop: str | None = None, look: tuple = (1.0, 1.0), look2: tuple = (0.0, 1.0), **_ignored):
         QObject.__init__(self, window)
         self.window = window
         self.rules = list(rules) if rules else [Glass(selector, "button", radius)]
@@ -102,6 +104,8 @@ class NativeController(GlassController):
         self.backdrop = backdrop   # "dda": ekran kadri (eski); "wgc": popup ostidagi oynalarni alohida olish (o'zimizniki kadrga tushmaydi)
         if backdrop == "wgc":
             _dll.lg_set_backend(self._h, 1)
+        _dll.lg_set_look2(self._h, float(look2[0]), float(look2[1]))   # (markaziy linza, yuqori yorug'lik): (0, 1) = oldingi ko'rinish
+        _dll.lg_set_look(self._h, float(look[0]), float(look[1]))   # (Fresnel kuchi, chet yorug'ligi): 1 = oldingi ko'rinish
         self.popup = popup   # popup: orqa fon nusxasi ichkarida muzlatiladi, matn rangi orqa fon yorqinligiga moslanadi, tayyor bo'lgach ko'rsatiladi
         self._ink_light = None
         self._last_ink = 0.0
