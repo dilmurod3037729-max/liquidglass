@@ -12,6 +12,7 @@ cbuffer G : register(b0) {
     float blur;    float spec;  float absorb; float merge;
     float shadowK; float shadowOff; float extraLod; float debugComposite;
     float hasContent; float rimOnly; float frost; float edge;
+    float2 winOff; float2 pad2;   // qo'zg'almas katta oyna: shisha chizilgan to'rtburchakning oyna ichidagi boshi
 };
 cbuffer S : register(b1) { float4 S[256 * 3]; }
 cbuffer BC : register(b3) { float4 bdir; }   // xiralashtirish: xy = qadam yo'nalishi, z = sigma (piksel)
@@ -36,12 +37,15 @@ float sdAll(float2 p) {
         float4 r = S[k * 3 + 0];
         float4 m = S[k * 3 + 1];
         float bd = length(max(abs(p - r.xy) - r.zw, 0.0));
-        if (bd > d + mk) continue;
+        if (bd > max(d, 0.0) + mk) continue;   // ichma-ich shakl (katta shakl ichida): d manfiy bo'lganda ham o'tkazib yuborilmaydi
         float bi = min(r.z, r.w);
         float di = sdRR(p - r.xy, r.zw, min(m.x, bi));
-        bool take = (d < 0.0 && di < 0.0) ? bi < bm : di < d;
+        bool nested = d < 0.0 && di < 0.0;
+        bool take = nested ? bi < bm : di < d;
         if (take) { bm = bi; bt = S[k * 3 + 2]; bmat = m.yz; }
-        d = smin_(d, di, mk);
+        // Ichma-ich shakl (kichigi katta shaklning ichida): u katta shakl USTIDA turadi, ya'ni uning o'z qirrasi va chuqurligi ishlaydi
+        // (birlashma d = min(...) bo'lsa kichik shaklning chegarasi hech qachon ko'rinmaydi). Faqat sezilarli kichik shakllar uchun (suyuq birlashma buzilmasin).
+        d = (nested && take && bi < 0.7 * bm) ? di : smin_(d, di, mk);
     }
     gMin = bm; gTint = bt; gMat = bmat;
     return d;
@@ -67,7 +71,7 @@ float2 refractOffset(float ior_, float3 Nn, float t, float dist, out float tir) 
     return inner + outer;
 }
 float4 ps(VO i) : SV_Target {
-    float2 px = i.pos.xy;
+    float2 px = i.pos.xy - winOff;
     float3 col = bgAt(px, 0.0);
     float2 bsz; bg.GetDimensions(bsz.x, bsz.y);
     float lum = saturate(dot(bg.SampleLevel(smpMip, clamp((px + pad) / bsz, 0.001, 0.999), 6.0).rgb, float3(0.299, 0.587, 0.114)));   // silliq o'rtacha yorqinlik (mip 6)
@@ -128,11 +132,23 @@ float4 ps(VO i) : SV_Target {
         if (debugComposite > 1.5 && debugComposite < 2.5) return float4(tr, 1);
         if (debugComposite > 2.5 && debugComposite < 3.5) return float4(lum, lum, lum, 1);
         if (debugComposite > 3.5 && debugComposite < 4.5) return float4(depth / 100.0, zR / 100.0, frost * 0.5, 1);
+        if (debugComposite > 4.5 && debugComposite < 5.5) return float4(tint.rgb, 1);
+        if (debugComposite > 5.5 && debugComposite < 6.5) return float4(tint.a, gm.x * 0.5 + 0.5, gm.y, 1);
         float path = t / max(abs(refract(float3(0, 0, -1), Nn, 1.0 / ior).z), 0.1) / dpr;
         tr *= exp(-absorb * path * float3(0.0042, 0.0036, 0.0030) * (1.0 - 0.7 * lum));
         tr = lerp(tr, tr * float3(0.98, 0.99, 1.02), 0.6);
         tr *= lerp(1.0, 0.93, lum);
-        tr = lerp(tr, tint.rgb * (0.5 + 0.5 * dot(tr, float3(0.3333, 0.3333, 0.3333))), tint.a);
+        if (tint.a < 0.0) {
+            // Xameleon rejimi (tint.a manfiy; |a| = kuch): shisha rangi fon yorqinligiga moslashadi (qorong'i fonda ochroq, yorug' fonda to'qroq)
+            // va fon rangidan biroz oladi, xuddi matn kabi
+            float3 lightT = lerp(tint.rgb, float3(1.0, 1.0, 1.0), 0.5);
+            float3 darkT = tint.rgb * 0.78;
+            float3 tc = lerp(lightT, darkT, smoothstep(0.28, 0.62, lum));
+            tc = lerp(tc, tr, 0.18);
+            tr = lerp(tr, tc, -tint.a);
+        } else {
+            tr = lerp(tr, tint.rgb * (0.5 + 0.5 * dot(tr, float3(0.3333, 0.3333, 0.3333))), tint.a);
+        }
         float cosT = clamp(Nn.z, 0.0, 1.0);
         float F = 0.04 + 0.96 * pow(1.0 - cosT, 5.0);
         float3 env = lerp(float3(0.05, 0.08, 0.14), float3(0.78, 0.9, 1.0), clamp(Nn.y * -0.5 + 0.5, 0.0, 1.0));
@@ -168,7 +184,23 @@ float4 ps(VO i) : SV_Target {
         float3 u = c.rgb / max(c.a, 1e-4);
         float sat = max(u.r, max(u.g, u.b)) - min(u.r, min(u.g, u.b));
         float k = sst(0.62, 0.38, lum) * (1.0 - sst(0.12, 0.30, sat));
-        c.rgb = lerp(u, 1.0 - u, k) * c.a;
+        if (hasContent > 1.5) {
+            // Xameleon kontent (haqiqiy emoji): rangli (to'yingan) PIKSELLAR fon yorqinligiga moslashadi va fon rangidan biroz oladi; to'q belgilar (ko'z, og'iz) o'zgarmaydi: kontrast saqlanadi
+            float satK = sst(0.20, 0.40, sat);
+            float Yc = dot(u, float3(0.299, 0.587, 0.114));
+            float bright = sst(0.30, 0.55, Yc);
+            float adapt = sst(0.28, 0.62, lum);                       // 0 = qorong'i fon, 1 = yorug' fon
+            // Qorong'i fonda ranglar RAQAMLAR kremiga (0.95,0.91,0.84) yaqinlashadi (jonli, ochiq), yorug' fonda raqamlar to'q-ko'kiga (0.06,0.09,0.16)
+            float3 lightT = lerp(u, float3(0.95, 0.91, 0.84), 0.50) * 1.06;
+            float3 darkT = lerp(u, float3(0.06, 0.09, 0.16), 0.14);
+            float3 tcol = lerp(lightT, darkT, adapt);
+            tcol = lerp(tcol, bgAt(px, 4.0), 0.04);
+            float3 uInv = lerp(u, 1.0 - u, k);   // kam to'yingan piksellar (matn) avvalgidek inversiya qilinadi
+            u = lerp(uInv, tcol, satK * bright);
+            c.rgb = u * c.a;
+        } else {
+            c.rgb = lerp(u, 1.0 - u, k) * c.a;
+        }
         outc = float4(c.rgb + (1.0 - c.a) * outc.rgb, c.a + (1.0 - c.a) * outc.a);
     }
     if (debugComposite > 0.5) outc = float4(outc.rgb + (1.0 - outc.a) * base, 1.0);

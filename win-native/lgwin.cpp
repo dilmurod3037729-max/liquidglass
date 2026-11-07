@@ -5,7 +5,15 @@
 #define NOMINMAX
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
-#include <d3d11.h>
+#include <unknwn.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Graphics.Capture.h>
+#include <winrt/Windows.Graphics.DirectX.h>
+#include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+#include <windows.graphics.capture.interop.h>
+#include <windows.graphics.directx.direct3d11.interop.h>
+#include <d3d11_4.h>
 #include <dxgi1_2.h>
 #include <dcomp.h>
 #include <dwmapi.h>
@@ -16,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -36,17 +45,29 @@ struct GCB {
     float blur, spec, absorb, merge;
     float shadowK, shadowOff, extraLod, debugComposite;
     float hasContent, rimOnly, frost, edge;
+    float winOff[2], pad2[2];
 };
 struct BCB { float dir[4]; };
 struct MCB { float desk[4]; float hist[4][4]; };
 
 // ───────── ommaviy holat (API oqimidan yoziladi, render oqimi o'qiydi) ─────────
+struct WinCap;
 struct Ov {
+    // WGC rejimida oyna QO'ZG'ALMAS: butun virtual ish stolini qoplaydi, shisha swapchain ichida chiziladi. Aks holda oyna o'rni va tasvir turli kadrlarda yetib borib, orqa fon siljib ketardi.
+    bool fixedWin = false; int VX = 0, VY = 0, VW = 0, VH = 0;
+    // WGC rejimi (lg_set_backend 1): orqa fon ekran kadridan emas, popup ostidagi har bir oynaning O'Z tasviridan (Windows.Graphics.Capture) yig'iladi.
+    bool wgc = false; long seenZ = 0; std::map<WinCap*, long> seenDirty;
+     std::vector<std::shared_ptr<WinCap>> layers, prefetch;   // prefetch: target'dan YUQORIDAGI oynalar ham oldindan olinadi (popup ustiga chiqqanda kadr tayyor)
+     ULONGLONG layerSig = 0, layerScanT = 0, wgcT0 = 0; long seenSerial = 0;
     HWND target = nullptr;
     float edgeSigma = 0;   // > 0: qirra refraksiyasi Gauss xira (piksel)
     ComPtr<ID3D11Texture2D> blurC, blurD; ComPtr<ID3D11ShaderResourceView> blurCSrv, blurDSrv; ComPtr<ID3D11RenderTargetView> blurCRtv, blurDRtv;
     float frostSigma = 0;   // > 0: popup ichki qismi Gauss bilan xiralashtiriladi (piksel)
     ComPtr<ID3D11Texture2D> blurA, blurB; ComPtr<ID3D11ShaderResourceView> blurASrv, blurBSrv; ComPtr<ID3D11RenderTargetView> blurARtv, blurBRtv;
+    // Muzlatilgan ichki orqa fonni yangilash: vaqti-vaqti bilan oynalar BIR LAHZAGA suratga olishdan chiqariladi, toza kadr olinadi, keyin qaytariladi
+    bool autoClean = false;   // standart O'CHIQ: yangilash paytida Windows ba'zan ko'k/noto'g'ri kadr beradi (beqaror)
+    int cleanPhase = 0; ULONGLONG cleanT = 0, lastClean = 0; bool unmaskNext = false;
+    bool chameleon = false;   // kontent rangli piksellari fonga moslashadi (haqiqiy emoji)
     bool hold = false;   // popup: oyna ichki qismining orqa fon nusxasi yangilanmaydi (qirra bilan birga muzlatiladi)
     std::atomic<bool> lumaReq{false}; std::atomic<float> luma{0.5f}; ComPtr<ID3D11Texture2D> lumaStage;
     bool visible = false;   // true: oyna ekran suratidan yashirilmaydi; markazi shaffof, faqat qirra chiziladi, orqa fon nusxasida qirra egallagan joy yangilanmaydi
@@ -103,11 +124,152 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 
+static double qpcMs() { LARGE_INTEGER a, f; QueryPerformanceCounter(&a); QueryPerformanceFrequency(&f); return a.QuadPart * 1000.0 / f.QuadPart; }
+static void lgTrace(const char* tag, long x, long y, double extra) { const char* path = std::getenv("LG_TRACE"); if (!path || !*path) return; FILE* f = fopen(path, "a"); if (f) { fprintf(f, "%s %.3f %ld %ld %.3f\n", tag, qpcMs(), x, y, extra); fclose(f); } }   // tashxis: LG_TRACE=<fayl yo'li>
+static void blurBack(Shared& S, Ov* o);
+
+// ───────── Windows.Graphics.Capture: har bir oyna alohida (GPU), ustida nima turganidan mustaqil ─────────
+namespace wgc = winrt::Windows::Graphics::Capture;
+namespace wgd = winrt::Windows::Graphics::DirectX;
+namespace wd3 = winrt::Windows::Graphics::DirectX::Direct3D11;
+static wd3::IDirect3DDevice gWinrtDev{ nullptr };
+static ID3D11Device* gDev = nullptr; static ID3D11DeviceContext* gCtx = nullptr;   // Shared egalik qiladi; kadr oqimlari ham ishlatadi (ctx multithread-himoyali)
+static std::atomic<long> gCapSerial{ 0 };
+static std::atomic<long> gZSerial{ 0 };   // z-tartib/fokus o'zgardi: qatlamlarni darhol qayta skanerlaymiz
+static void CALLBACK zHook(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) { gZSerial++; }
+static HANDLE gWake = nullptr;   // kadr kelganda render oqimini uyg'otadi (aks holda tsikl bo'sh aylanadi)
+
+struct WinCap : std::enable_shared_from_this<WinCap> {
+    HWND hwnd = nullptr; bool wallpaper = false, ok = false, failed = false;
+    wgc::GraphicsCaptureItem item{ nullptr }; wgc::Direct3D11CaptureFramePool pool{ nullptr }; wgc::GraphicsCaptureSession session{ nullptr };
+    wgc::Direct3D11CaptureFramePool::FrameArrived_revoker rev;
+    std::mutex mu; ComPtr<ID3D11Texture2D> tex; int w = 0, h = 0; std::atomic<long> frames{ 0 };
+    RECT fr{};   // oxirgi compose qilingan o'rin
+    std::vector<std::pair<long, RECT>> pend;   // (kadr raqami, o'zgargan joy ekran koordinatasida): faqat popup ostidagi o'zgarishlar qayta chizishni boshlaydi
+    void start() {
+        try {
+            auto interop = winrt::get_activation_factory<wgc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
+            winrt::check_hresult(interop->CreateForWindow(hwnd, winrt::guid_of<wgc::GraphicsCaptureItem>(), winrt::put_abi(item)));
+            pool = wgc::Direct3D11CaptureFramePool::CreateFreeThreaded(gWinrtDev, wgd::DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, item.Size());
+            std::weak_ptr<WinCap> wk = shared_from_this();
+            rev = pool.FrameArrived(winrt::auto_revoke, [wk](wgc::Direct3D11CaptureFramePool const& sender, winrt::Windows::Foundation::IInspectable const&) {
+                auto self = wk.lock(); if (!self) return;
+                auto frame = sender.TryGetNextFrame(); if (!frame) return;
+                auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
+                ComPtr<ID3D11Texture2D> t; if (FAILED(access->GetInterface(__uuidof(ID3D11Texture2D), (void**)t.GetAddressOf()))) return;
+                D3D11_TEXTURE2D_DESC d; t->GetDesc(&d);
+                std::lock_guard<std::mutex> lk(self->mu);
+                if (!self->tex || self->w != (int)d.Width || self->h != (int)d.Height) {
+                    d.BindFlags = 0; d.MiscFlags = 0; d.Usage = D3D11_USAGE_DEFAULT; d.CPUAccessFlags = 0;
+                    self->tex.Reset(); gDev->CreateTexture2D(&d, nullptr, self->tex.GetAddressOf()); self->w = d.Width; self->h = d.Height;
+                }
+                if (self->tex) {
+                    gCtx->CopyResource(self->tex.Get(), t.Get());
+                    long serial = ++self->frames;
+                    RECT wf{}; if (self->wallpaper || FAILED(DwmGetWindowAttribute(self->hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &wf, sizeof(wf)))) GetWindowRect(self->hwnd, &wf);
+                    bool any = false;
+                    try { auto dr = frame.DirtyRegions(); for (auto const& r : dr) { any = true; self->pend.push_back({ serial, RECT{ wf.left + r.X, wf.top + r.Y, wf.left + r.X + r.Width, wf.top + r.Y + r.Height } }); } } catch (...) {}
+                    if (!any) self->pend.push_back({ serial, wf });   // bo'sh yoki qo'llab-quvvatlanmasa: butun oyna o'zgargan deb hisoblaymiz
+                    if (self->pend.size() > 96) { RECT u = self->pend[0].second; for (auto& e : self->pend) UnionRect(&u, &u, &e.second); self->pend.assign(1, { serial, u }); }
+                    gCapSerial++; if (gWake) SetEvent(gWake);
+                }
+            });
+            session = pool.CreateCaptureSession(item);
+            try { session.IsCursorCaptureEnabled(false); } catch (...) {}
+            try { session.IsBorderRequired(false); } catch (...) {}   // sariq chegara (Windows 11)
+            session.StartCapture();
+            ok = true;
+        } catch (...) { failed = true; }   // himoyalangan/olinmaydigan oyna: shu qatlam o'tkazib yuboriladi
+    }
+    void stop() { try { rev.revoke(); if (session) session.Close(); if (pool) pool.Close(); } catch (...) {} }
+};
+static std::map<HWND, std::shared_ptr<WinCap>> gCapCache;   // faqat render oqimidan ishlatiladi
+
+static std::shared_ptr<WinCap> getCap(HWND h, bool wallpaper) {
+    auto it = gCapCache.find(h);
+    if (it != gCapCache.end()) return it->second;
+    auto c = std::make_shared<WinCap>(); c->hwnd = h; c->wallpaper = wallpaper; c->start();
+    gCapCache[h] = c; return c;
+}
+static void pruneCaps() {
+    for (auto it = gCapCache.begin(); it != gCapCache.end();) {
+        if (it->second.use_count() == 1 || !IsWindow(it->first)) { it->second->stop(); it = gCapCache.erase(it); } else ++it;
+    }
+}
+static RECT capFrame(HWND h, bool wallpaper) {
+    RECT r{};
+    if (wallpaper || FAILED(DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof(r)))) GetWindowRect(h, &r);
+    return r;
+}
+
+// Popup ostidagi oynalarni (z-tartibda, target'dan pastdagilar) topadi. To'liq yopuvchi (shaffof bo'lmagan) oynadan pastdagilar olinmaydi. Imzo o'zgarsa true.
+static bool scanLayers(Ov* o) {
+    RECT region{ o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD };
+    RECT wide{ region.left - 400, region.top - 400, region.right + 400, region.bottom + 400 };   // popup siljiganda yangi oyna kadri allaqachon tayyor bo'lsin
+    struct Ctx { RECT region; Ov* o; std::vector<HWND> list; } c{ wide, o, {} };
+    EnumWindows([](HWND h, LPARAM lp) -> BOOL {
+        auto* c = (Ctx*)lp;
+        if (h == c->o->target) { c->list.push_back(h); return TRUE; }   // marker: undan pastdagilar kerak
+        if (h == c->o->hwnd || !IsWindowVisible(h) || IsIconic(h)) return TRUE;
+        int cloaked = 0; DwmGetWindowAttribute(h, DWMWA_CLOAKED, &cloaked, sizeof(cloaked)); if (cloaked) return TRUE;
+        wchar_t cls[64]{}; GetClassNameW(h, cls, 64);
+        if (!wcscmp(cls, L"LGWinOverlay") || !wcscmp(cls, L"Progman") || !wcscmp(cls, L"WorkerW")) return TRUE;
+        RECT f = capFrame(h, false), i;
+        if (f.right - f.left < 8 || f.bottom - f.top < 8 || !IntersectRect(&i, &f, &c->region)) return TRUE;
+        c->list.push_back(h); return TRUE;
+    }, (LPARAM)&c);
+    size_t start = 0; for (size_t i = 0; i < c.list.size(); i++) if (c.list[i] == o->target) { start = i + 1; break; }
+    std::vector<HWND> want; ULONGLONG sig = 1469598103934665603ULL;
+    auto mix = [&](ULONGLONG v) { sig = (sig ^ v) * 1099511628211ULL; };
+    std::vector<std::shared_ptr<WinCap>> pre;
+    for (size_t i = 0; i + 1 < start; i++) { mix((ULONGLONG)(UINT_PTR)c.list[i]); pre.push_back(getCap(c.list[i], false)); }   // yuqoridagilar (target'ning o'zi start-1 da)
+    for (size_t i = start; i < c.list.size(); i++) {
+        HWND h = c.list[i]; if (h == o->target) continue;
+        RECT f = capFrame(h, false);
+        want.push_back(h); mix((ULONGLONG)(UINT_PTR)h); mix(f.left + 100000); mix(f.top + 100000); mix(f.right + 100000); mix(f.bottom + 100000);
+        bool opaqueCover = f.left <= region.left && f.top <= region.top && f.right >= region.right && f.bottom >= region.bottom && !(GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_LAYERED);
+        if (opaqueCover) break;   // pastdagilar ko'rinmaydi
+    }
+    HWND prog = FindWindowW(L"Progman", nullptr);
+    mix((ULONGLONG)(UINT_PTR)prog);
+    if (sig == o->layerSig && !o->layers.empty()) return false;
+    o->layerSig = sig; o->layers.clear(); o->prefetch = std::move(pre);
+    if (prog) o->layers.push_back(getCap(prog, true));   // ish stoli devori + ikonkalar: eng pastki qatlam
+    for (size_t i = want.size(); i-- > 0;) o->layers.push_back(getCap(want[i], false));   // pastdan yuqoriga
+    return true;
+}
+
+static bool layersReady(Ov* o) {
+    if (o->layers.empty()) return false;
+    for (auto& l : o->layers) { if (l->failed) continue; std::lock_guard<std::mutex> lk(l->mu); if (l->tex) return true; }   // bittasi tayyor bo'lsa yetadi: qolganlari kelgach qo'shiladi
+    return GetTickCount64() - o->wgcT0 > 700;
+}
+
+static void composeWgc(Shared& S, Ov* o) {
+    long x0 = o->last.x - PAD, y0 = o->last.y - PAD; int BW = o->W + 2 * PAD, BH = o->H + 2 * PAD;
+    RECT region{ x0, y0, x0 + BW, y0 + BH };
+    for (auto& l : o->layers) {
+        if (l->failed) continue;
+        std::lock_guard<std::mutex> lk(l->mu); if (!l->tex) continue;
+        RECT f = capFrame(l->hwnd, l->wallpaper), in; l->fr = f;   // oxirgi chizilgan o'rin
+        if (!IntersectRect(&in, &f, &region)) continue;
+        UINT r = std::min<LONG>(in.right - f.left, l->w), b = std::min<LONG>(in.bottom - f.top, l->h);
+        D3D11_BOX box{ (UINT)(in.left - f.left), (UINT)(in.top - f.top), 0, r, b, 1 };
+        if (box.right <= box.left || box.bottom <= box.top) continue;
+        S.ctx->CopySubresourceRegion(o->back.Get(), 0, in.left - x0, in.top - y0, 0, l->tex.Get(), 0, &box);
+    }
+    S.ctx->GenerateMips(o->srv.Get());
+    blurBack(S, o);
+}
+
 static bool initDevice(Shared& S, IDXGIAdapter1* adapter) {
     D3D_FEATURE_LEVEL fl;
     if (FAILED(D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &S.dev, &fl, &S.ctx))) return false;
     DXGI_ADAPTER_DESC1 ad; adapter->GetDesc1(&ad); S.luid = ad.AdapterLuid;
     ComPtr<IDXGIDevice> dxgiDev; S.dev.As(&dxgiDev);
+    { ComPtr<ID3D11Multithread> mt; if (SUCCEEDED(S.ctx.As(&mt))) mt->SetMultithreadProtected(TRUE); }   // WGC kadr oqimlari ham shu kontekstdan nusxa oladi
+    gDev = S.dev.Get(); gCtx = S.ctx.Get();
+    { winrt::com_ptr<::IInspectable> insp; if (SUCCEEDED(CreateDirect3D11DeviceFromDXGIDevice(dxgiDev.Get(), insp.put()))) gWinrtDev = insp.as<wd3::IDirect3DDevice>(); }
     if (FAILED(DCompositionCreateDevice(dxgiDev.Get(), IID_PPV_ARGS(&S.dc)))) return false;
     ComPtr<ID3DBlob> vsb, psb, err;
     if (FAILED(D3DCompile(kHlsl, std::strlen(kHlsl), "lg", nullptr, nullptr, "vs", "vs_5_0", 0, 0, &vsb, &err))) return false;
@@ -193,7 +355,9 @@ static int setupOverlay(Shared& S, Ov* o, POINT origin, int w, int h, HRESULT& h
     bool any = false; for (auto& od : S.outs) if (rectHit(od.rc, origin.x, origin.y, origin.x + w, origin.y + h)) any = true;
     if (!any) { hr = E_FAIL; return 4; }
     ComPtr<IDXGIFactory2> fac2; S.fac.As(&fac2);
-    DXGI_SWAP_CHAIN_DESC1 sd{}; sd.Width = w; sd.Height = h; sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM; sd.SampleDesc.Count = 1;
+    o->fixedWin = o->wgc;
+    if (o->fixedWin) { o->VX = GetSystemMetrics(SM_XVIRTUALSCREEN); o->VY = GetSystemMetrics(SM_YVIRTUALSCREEN); o->VW = GetSystemMetrics(SM_CXVIRTUALSCREEN); o->VH = GetSystemMetrics(SM_CYVIRTUALSCREEN); SetWindowPos(o->hwnd, nullptr, o->VX, o->VY, o->VW, o->VH, SWP_NOACTIVATE | SWP_NOZORDER); }
+    DXGI_SWAP_CHAIN_DESC1 sd{}; sd.Width = o->fixedWin ? o->VW : w; sd.Height = o->fixedWin ? o->VH : h; sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM; sd.SampleDesc.Count = 1;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT; sd.BufferCount = 2; sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; sd.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
     if (FAILED(hr = fac2->CreateSwapChainForComposition(S.dev.Get(), &sd, nullptr, &o->sc))) return 5;
     if (FAILED(hr = S.dc->CreateTargetForHwnd(o->hwnd, TRUE, &o->tgt))) return 7;
@@ -246,7 +410,8 @@ static void uploadConstants(Shared& S, Ov* o, bool debug) {
             o->contentNew = false;
         }
     }
-    cb.hasContent = o->hasContent ? 1.f : 0.f; cb.rimOnly = o->visible ? 1.f : 0.f; cb.frost = (o->frostSigma > 0 && o->blurB) ? 1.f : 0.f; cb.edge = (o->edgeSigma > 0 && o->blurD) ? 1.f : 0.f;
+    cb.hasContent = o->hasContent ? (o->chameleon ? 2.f : 1.f) : 0.f; cb.rimOnly = o->visible ? 1.f : 0.f; cb.frost = (o->frostSigma > 0 && o->blurB) ? 1.f : 0.f; cb.edge = (o->edgeSigma > 0 && o->blurD) ? 1.f : 0.f;
+    cb.winOff[0] = o->fixedWin ? (float)(o->last.x - o->VX) : 0.f; cb.winOff[1] = o->fixedWin ? (float)(o->last.y - o->VY) : 0.f;
     cb.res[0] = (float)o->W; cb.res[1] = (float)o->H; cb.pad[0] = cb.pad[1] = (float)PAD; cb.count = (float)n; cb.debugComposite = debug ? 1.f : 0.f; if (debug && std::getenv("LG_DBG")) cb.debugComposite = (float)std::atoi(std::getenv("LG_DBG"));
     S.ctx->UpdateSubresource(S.gcb.Get(), 0, nullptr, &cb, 0, 0);
     sh.resize((size_t)MAX_SHAPES * 12, 0.f);   // doimiy buferni faqat to'liq yangilash mumkin
@@ -255,9 +420,10 @@ static void uploadConstants(Shared& S, Ov* o, bool debug) {
 
 static void render(Shared& S, Ov* o, bool debug) {
     uploadConstants(S, o, debug);
-    D3D11_VIEWPORT vp{ 0, 0, (float)o->W, (float)o->H, 0, 1 };
+    D3D11_VIEWPORT vp{ o->fixedWin ? (float)(o->last.x - o->VX) : 0.f, o->fixedWin ? (float)(o->last.y - o->VY) : 0.f, (float)o->W, (float)o->H, 0, 1 };
     S.ctx->RSSetViewports(1, &vp);
     ID3D11RenderTargetView* rt = o->rtv.Get(); S.ctx->OMSetRenderTargets(1, &rt, nullptr);
+    if (o->fixedWin) { const float clr[4] = { 0, 0, 0, 0 }; S.ctx->ClearRenderTargetView(rt, clr); }
     S.ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     S.ctx->VSSetShader(S.vsh.Get(), nullptr, 0); S.ctx->PSSetShader(S.psh.Get(), nullptr, 0);
     ID3D11Buffer* cbs[2] = { S.gcb.Get(), S.scb.Get() }; S.ctx->PSSetConstantBuffers(0, 2, cbs);
@@ -279,6 +445,9 @@ static void dumpBackbuffer(Shared& S, Ov* o) {
             std::vector<uint8_t> g((size_t)d.Width * d.Height * 4);
             for (UINT y = 0; y < d.Height; y++) for (UINT x = 0; x < d.Width; x++) { uint8_t al = ((const uint8_t*)mp.pData)[(size_t)y * mp.RowPitch + x * 4 + 3]; size_t k = ((size_t)y * d.Width + x) * 4; g[k] = g[k + 1] = g[k + 2] = al; g[k + 3] = 255; }
             saveBmp(o->dumpPath.c_str(), g.data(), d.Width, d.Height, d.Width * 4);
+        } else if (o->fixedWin && o->dumpWhich == 0) {   // katta swapchain: faqat shisha to'rtburchagi
+            long ox = o->last.x - o->VX, oy = o->last.y - o->VY;
+            if (ox >= 0 && oy >= 0 && ox + o->W <= (long)d.Width && oy + o->H <= (long)d.Height) saveBmp(o->dumpPath.c_str(), (const uint8_t*)mp.pData + (size_t)oy * mp.RowPitch + (size_t)ox * 4, o->W, o->H, mp.RowPitch);
         } else saveBmp(o->dumpPath.c_str(), (const uint8_t*)mp.pData, d.Width, d.Height, mp.RowPitch);
         S.ctx->Unmap(st.Get(), 0);
     }
@@ -338,14 +507,16 @@ static void copyBack(Shared& S, Ov* o) {
 // Ko'rinadigan rejimda orqa fon nusxasi (oyna ostidagi monitor kadri) tayyor bo'lmaguncha shisha CHIZILMAYDI: aks holda birinchi kadrga shishaning
 // o'zi tushib, muzlatilgan nusxani buzadi (oyna ichida o'z matnining ko'chirmasi, qora markaz).
 static bool backReady(Shared& S, Ov* o) {
+    if (o->wgc) return layersReady(o);
     if (!o->visible) return true;
     for (auto& od : S.outs) if (od.valid && rectHit(od.rc, o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD)) return true;
     return false;
 }
 
 static bool backAndPresent(Shared& S, Ov* o) {
-    if (!o->inited || !backReady(S, o)) return false;
-    copyBack(S, o);
+    if (o->wgc && o->layers.empty()) scanLayers(o);
+    if (!o->inited || !backReady(S, o)) { if (o->wgc) lgTrace("notready", (long)o->layers.size(), 0, 0); return false; }
+    if (o->wgc) { composeWgc(S, o); long rd = 0; for (auto& l : o->layers) { std::lock_guard<std::mutex> lk(l->mu); if (l->tex) rd++; } lgTrace("compose", (long)o->layers.size(), rd, 0); } else copyBack(S, o);
     o->updates++; o->needBack = false; o->dirty = false;
     LARGE_INTEGER t0, t1, fq; QueryPerformanceFrequency(&fq); QueryPerformanceCounter(&t0);
     render(S, o, false);
@@ -396,6 +567,7 @@ static void probeLuma(Shared& S, Ov* o) {
 }
 
 static ULONGLONG gLastMove = 0;
+#define LGLOG(msg) ((void)0)
 
 // Skrinshot rejimi: PrtScn / Win+Shift+S bosilganda ~3 soniya shisha oynalari ekran suratiga tushadi (odatda WDA_EXCLUDEFROMCAPTURE ularni yashiradi).
 // Shu vaqtda orqa fon muzlatiladi (aks holda shisha o'zini suratga olib qayta aloqa bo'ladi).
@@ -423,6 +595,7 @@ static LRESULT CALLBACK kbHook(int code, WPARAM wp, LPARAM lp) {
 }   // oxirgi oyna siljishi vaqti: shu paytda kutishni qisqartiramiz
 
 static void teardown(Ov* o) {
+    o->layers.clear(); o->prefetch.clear();
     releaseOverlayGpu(o);
     if (o->hwnd) { DestroyWindow(o->hwnd); o->hwnd = nullptr; }
     o->done = true;
@@ -430,9 +603,13 @@ static void teardown(Ov* o) {
 
 static void worker() {
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    if (!gWake) gWake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     WNDCLASSW wc{}; wc.lpfnWndProc = wndProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"LGWinOverlay";
     RegisterClassW(&wc);
     Shared S;
+    HWINEVENTHOOK zh1 = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MOVESIZEEND, nullptr, zHook, 0, 0, WINEVENT_OUTOFCONTEXT);
+    HWINEVENTHOOK zh2 = SetWinEventHook(EVENT_OBJECT_REORDER, EVENT_OBJECT_REORDER, nullptr, zHook, 0, 0, WINEVENT_OUTOFCONTEXT);
     HHOOK hook = std::getenv("LG_NO_HOOK") ? nullptr : SetWindowsHookExW(WH_KEYBOARD_LL, kbHook, GetModuleHandleW(nullptr), 0);
     while (gRun) {
         MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
@@ -465,11 +642,13 @@ static void worker() {
             }
             RECT cr{}; GetClientRect(o->target, &cr); POINT org{ 0, 0 }; ClientToScreen(o->target, &org);
             int W = cr.right, H = cr.bottom;
-            bool vis = IsWindowVisible(o->target) && !IsIconic(o->target) && W > 0 && H > 0;
+            int cloaked = 0; DwmGetWindowAttribute(o->target, 14, &cloaked, sizeof(cloaked));   // DWMWA_CLOAKED: UWP/Start kabi yashirin oynalar IsWindowVisible=true bo'lib qoladi
+            bool vis = IsWindowVisible(o->target) && !cloaked && !IsIconic(o->target) && W > 0 && H > 0;
             if (!vis) { if (o->inited) { ShowWindow(o->hwnd, SW_HIDE); releaseOverlayGpu(o); } continue; }
-            if (!o->inited || W != o->W || H != o->H) {
+            bool vchg = o->inited && o->fixedWin && (o->VX != GetSystemMetrics(SM_XVIRTUALSCREEN) || o->VY != GetSystemMetrics(SM_YVIRTUALSCREEN) || o->VW != GetSystemMetrics(SM_CXVIRTUALSCREEN) || o->VH != GetSystemMetrics(SM_CYVIRTUALSCREEN));
+            if (!o->inited || W != o->W || H != o->H || o->fixedWin != o->wgc || vchg) {
                 releaseOverlayGpu(o);
-                SetWindowPos(o->hwnd, nullptr, org.x, org.y, W, H, SWP_NOACTIVATE | SWP_NOZORDER);
+                if (!o->wgc) SetWindowPos(o->hwnd, nullptr, org.x, org.y, W, H, SWP_NOACTIVATE | SWP_NOZORDER);
                 HRESULT hr = S_OK; int st = setupOverlay(S, o, org, W, H, hr);
                 if (st) { o->errStage = st; o->errHr = (long)hr; releaseOverlayGpu(o); continue; }
                 o->last = { -99999, -99999 };
@@ -482,8 +661,10 @@ static void worker() {
                 o->last = org; o->dirty = true; o->needBack = true;
                 gLastMove = GetTickCount64();
                 // Yangi o'rinning orqa fonini AVVAL chizamiz, keyin oynani ko'chiramiz: DWM ikkalasini bir kadrda ko'rsatadi (eski tasvir yangi joyda qolmaydi)
-                backAndPresent(S, o);
-                SetWindowPos(o->hwnd, nullptr, org.x, org.y, W, H, SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW);
+                bool okp = backAndPresent(S, o);
+                lgTrace(okp ? "present" : "skip", org.x, org.y, o->lastUs / 1000.0);
+                if (!o->wgc) SetWindowPos(o->hwnd, nullptr, org.x, org.y, W, H, SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW);   // WGC: oyna qo'zg'almas, o'rin swapchain ichida
+                lgTrace("moved", org.x, org.y, 0);
             }
             if (o->under) {   // shisha target'ning ostida (ikki-uch oyna oralig'i bo'lishi mumkin); Z-tartibni kamdan-kam va kechikish bilan tuzatamiz
                 bool below = false; HWND w = o->target;
@@ -494,20 +675,54 @@ static void worker() {
                 }
             }
             if (o->nhist > 1 && GetTickCount64() - o->histT > 300) { o->nhist = 1; o->needBack = true; }   // oyna to'xtadi: eski o'rinlar maskasi endi kerak emas
+            if (!o->wgc && o->autoClean && o->visible && o->hold && o->inited && !gAffVisible) {
+                ULONGLONG now = GetTickCount64();
+                auto aff = [&](DWORD a) { SetWindowDisplayAffinity(o->hwnd, a); if (o->under && IsWindow(o->target)) SetWindowDisplayAffinity(o->target, a); };
+                if (o->cleanPhase == 0 && now - o->lastClean > 4000 && now - gLastMove > 800) {   // 1: oynalarni suratdan chiqaramiz va kompozitsiyani yangilaymiz
+                    LGLOG("faza1");
+                    aff(0x11); o->cleanPhase = 1; o->cleanT = now; o->dirty = true;
+                } else if (o->cleanPhase == 1 && now - o->cleanT > 350) {   // oynalar suratdan chiqqach kompozitsiya tinchishi uchun kutamiz (oldin 140 ms: o'tish kadrida ko'k to'ldirma tushardi)                          // 2: keyingi kadr TOZA (oynalarsiz): ichki qism yangilanadi
+                    LGLOG("faza2");
+                    o->unmaskNext = true; o->cleanPhase = 2; o->cleanT = now; o->dirty = true;
+                } else if (o->cleanPhase == 2 && now - o->cleanT > 900) {                          // kadr kelmadi: baribir qaytaramiz
+                    aff(0); o->unmaskNext = false; o->cleanPhase = 0; o->lastClean = now; o->needBack = true;
+                }
+            }
+            if (o->wgc && o->inited) {   // oynalar to'plami/joyi o'zgardimi yoki biror qatlamdan yangi kadr keldimi
+                ULONGLONG nowT = GetTickCount64();
+                if (!o->wgcT0) o->wgcT0 = nowT;
+                for (auto& l : o->layers) if (!l->failed && !l->wallpaper) { RECT c = capFrame(l->hwnd, false); if (!EqualRect(&c, &l->fr)) { o->needBack = true; break; } }   // oyna siljidi: yangi kadr kelmasa ham darhol
+                long zs = gZSerial.load();
+                if (zs != o->seenZ || nowT - o->layerScanT > 120) { o->seenZ = zs; o->layerScanT = nowT; if (scanLayers(o)) o->needBack = true; }
+                long sn = gCapSerial.load();
+                if (sn != o->seenSerial) {   // yangi kadr keldi: faqat popup (+PAD) ostidagi o'zgarish bo'lsa qayta yig'amiz
+                    o->seenSerial = sn;
+                    RECT reg{ o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD };
+                    for (auto& l : o->layers) {
+                        std::lock_guard<std::mutex> lk(l->mu);
+                        long& seen = o->seenDirty[l.get()]; bool hit = false;
+                        for (auto& e : l->pend) { RECT t; if (e.first > seen && IntersectRect(&t, &e.second, &reg)) hit = true; }
+                        seen = l->frames.load();
+                        if (hit) o->needBack = true;
+                    }
+                }
+            }
             alive.push_back(o);
         }
+        { static ULONGLONG lastPrune = 0; ULONGLONG nowT = GetTickCount64(); if (nowT - lastPrune > 2000) { lastPrune = nowT; pruneCaps(); } }
         if (alive.empty()) { Sleep(25); continue; }
 
         // har bir monitor uchun bir marta kadr olamiz
-        bool anyFresh = false;
+        bool anyFresh = false, waited = false;
         for (size_t i = 0; i < S.outs.size(); i++) {
             OutDup& od = S.outs[i]; od.fresh = false; od.frame.Reset();
-            bool used = false; for (Ov* o : alive) if (o->inited && rectHit(od.rc, o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD)) used = true;
+            bool used = false; for (Ov* o : alive) if (o->inited && !o->wgc && rectHit(od.rc, o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD)) used = true;
             if (used && !od.dupl && GetTickCount64() >= od.retryAt) {   // qulf/UAC/ekran rejimi o'zgargandan keyin duplication uziladi: har 400 ms qayta ulanishga urinamiz
                 od.retryAt = GetTickCount64() + 400;
                 if (od.out1) od.out1->DuplicateOutput(S.dev.Get(), &od.dupl);
             }
             if (!used || !od.dupl) continue;
+            waited = true;
             DXGI_OUTDUPL_FRAME_INFO fi{}; ComPtr<IDXGIResource> res;
             HRESULT hr = od.dupl->AcquireNextFrame(anyFresh ? 0 : (GetTickCount64() - gLastMove < 400 ? 1 : 8), &fi, &res);
             if (SUCCEEDED(hr)) {
@@ -531,13 +746,18 @@ static void worker() {
                             if (all) { od.echo = true; gSelfPresents--; }
                         }
                     }
-                    bool hasVisibleOv = false; for (Ov* q : alive) if (q->visible && q->inited && rectHit(od.rc, q->last.x - PAD, q->last.y - PAD, q->last.x + q->W + PAD, q->last.y + q->H + PAD)) hasVisibleOv = true;
+                    bool hasVisibleOv = false; for (Ov* q : alive) if (q->visible && q->inited && !q->wgc && rectHit(od.rc, q->last.x - PAD, q->last.y - PAD, q->last.x + q->W + PAD, q->last.y + q->H + PAD)) hasVisibleOv = true;
                     if (!gAffVisible || hasVisibleOv) {   // skrinshot rejimida (yashiriladigan oynalar uchun) orqa fon muzlatiladi
                         S.ctx->CopyResource(od.deskB.Get(), od.frame.Get());
                         if (od.valid)   // birinchi kadrda maska yo'q: toza nusxa hali yo'q
-                            for (Ov* q : alive) if (q->visible && q->inited && rectHit(od.rc, q->last.x - PAD, q->last.y - PAD, q->last.x + q->W + PAD, q->last.y + q->H + PAD)) maskPass(S, q, od);
+                            for (Ov* q : alive) if (q->visible && q->inited && !q->wgc && rectHit(od.rc, q->last.x - PAD, q->last.y - PAD, q->last.x + q->W + PAD, q->last.y + q->H + PAD)) if (!q->unmaskNext) maskPass(S, q, od);
                         std::swap(od.desk, od.deskB); std::swap(od.deskSrv, od.deskBSrv); std::swap(od.deskRtv, od.deskBRtv);
                         od.fresh = !od.echo; anyFresh = true;
+                        for (Ov* q : alive) if (q->unmaskNext && q->inited && GetTickCount64() - q->cleanT > 260 && rectHit(od.rc, q->last.x - PAD, q->last.y - PAD, q->last.x + q->W + PAD, q->last.y + q->H + PAD)) {
+                            LGLOG("toza kadr");
+                            q->unmaskNext = false; q->cleanPhase = 0; q->lastClean = GetTickCount64(); q->needBack = true;
+                            SetWindowDisplayAffinity(q->hwnd, 0); if (q->under && IsWindow(q->target)) SetWindowDisplayAffinity(q->target, 0);   // toza kadr olindi: oynalar yana suratda ko'rinadi
+                        }
                         if (!od.valid) { od.valid = true; for (Ov* q : alive) q->needBack = true; }   // yangi monitorning birinchi kadri: hamma qatlam orqa fonini to'ldiradi
                     }
                 }
@@ -547,9 +767,10 @@ static void worker() {
         for (Ov* o : alive) {
             if (!o->inited) continue;
             bool freshHere = false;
-            for (auto& od : S.outs) if (od.fresh && rectHit(od.rc, o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD)) freshHere = true;
+            if (!o->wgc) for (auto& od : S.outs) if (od.fresh && rectHit(od.rc, o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD)) freshHere = true;
             if (freshHere || o->needBack) backAndPresent(S, o);
             else if (backReady(S, o) && o->dirty.exchange(false)) {
+                lgTrace("render", 0, 0, 0);
                 LARGE_INTEGER t0, t1, fq; QueryPerformanceFrequency(&fq); QueryPerformanceCounter(&t0);
                 render(S, o, false);
                 o->sc->Present(0, 0); gSelfPresents = std::min(gSelfPresents + 1, 4);
@@ -563,7 +784,9 @@ static void worker() {
             }
         }
         for (size_t i = 0; i < S.outs.size(); i++) if (S.outs[i].dupl && S.outs[i].frame) { S.outs[i].frame.Reset(); S.outs[i].dupl->ReleaseFrame(); }
+        if (!waited) WaitForSingleObject(gWake, GetTickCount64() - gLastMove < 400 ? 1 : 4);   // ekran kadri kutilmadi (WGC rejimi): oyna kadri kelguncha yoki 8 ms uxlaymiz
     }
+    if (zh1) UnhookWinEvent(zh1); if (zh2) UnhookWinEvent(zh2);
     if (hook) UnhookWindowsHookEx(hook);
     {
         std::lock_guard<std::mutex> lk(gMu);
@@ -613,6 +836,10 @@ __declspec(dllexport) void lg_set_content(void* h, const uint8_t* bgra, int w, i
 __declspec(dllexport) void lg_set_frost(void* h, float sigma) { Ov* o = (Ov*)h; if (o) { o->frostSigma = sigma; o->needBack = true; } }
 // Qirra refraksiyasining Gauss xiraligi (sigma: haqiqiy piksel; 0 = o'chiq)
 __declspec(dllexport) void lg_set_edge(void* h, float sigma) { Ov* o = (Ov*)h; if (o) { o->edgeSigma = sigma; o->needBack = true; } }
+__declspec(dllexport) void lg_set_chameleon(void* h, int on) { Ov* o = (Ov*)h; if (o) { o->chameleon = on != 0; o->dirty = true; } }
+// Orqa fon manbai: 0 = ekran kadri (DDA), 1 = popup ostidagi oynalarni alohida olish (Windows.Graphics.Capture): o'zimizning oynalar kadrga tushmaydi
+__declspec(dllexport) void lg_set_backend(void* h, int mode) { Ov* o = (Ov*)h; if (o) { o->wgc = mode == 1; o->needBack = true; } }
+__declspec(dllexport) void lg_set_autoclean(void* h, int on) { Ov* o = (Ov*)h; if (o) o->autoClean = on != 0; }
 __declspec(dllexport) void lg_set_hold(void* h, int on) { Ov* o = (Ov*)h; if (o) { o->hold = on != 0; o->needBack = true; } }
 // Orqa fon yorqinligi: oxirgi o'lchangan qiymatni qaytaradi va yangisini so'raydi (render oqimi keyingi kadrda o'lchaydi)
 __declspec(dllexport) float lg_luma(void* h) { Ov* o = (Ov*)h; if (!o) return 0.5f; o->lumaReq = true; return o->luma; }

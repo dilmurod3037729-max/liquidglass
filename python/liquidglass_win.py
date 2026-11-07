@@ -6,6 +6,7 @@ Python faqat shakllar ro'yxatini beradi: snapshot, yozuv nusxalari va asl tugmal
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ def _load():
             dll.lg_create.restype = ctypes.c_void_p
             dll.lg_create.argtypes = [ctypes.c_void_p]
             dll.lg_set_hold.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            dll.lg_set_backend.argtypes = [ctypes.c_void_p, ctypes.c_int]
             dll.lg_set_frost.argtypes = [ctypes.c_void_p, ctypes.c_float]
             dll.lg_set_edge.argtypes = [ctypes.c_void_p, ctypes.c_float]
             dll.lg_luma.argtypes = [ctypes.c_void_p]
@@ -73,7 +75,7 @@ class NativeController(GlassController):
     """GlassController bilan bir xil API (add/remove/set_params), lekin shisha lgwin.dll da chiziladi."""
 
     def __init__(self, window: QWidget, rules: list[Glass] | None = None, selector=QPushButton, params: dict | None = None,
-                 radius: float | None = None, min_size=(28, 22), under: bool = False, capture: str = "visible", popup: bool = False, frost: float | None = None, edge: float = 0.0, **_ignored):
+                 radius: float | None = None, min_size=(28, 22), under: bool = False, capture: str = "visible", popup: bool = False, frost: float | None = None, edge: float = 0.0, backdrop: str | None = None, **_ignored):
         QObject.__init__(self, window)
         self.window = window
         self.rules = list(rules) if rules else [Glass(selector, "button", radius)]
@@ -96,6 +98,10 @@ class NativeController(GlassController):
         self._last_scan = 0.0
         self.under = under   # True: shisha oynaning OSTIDA (oyna shaffof, kontenti tiniq); False: ustida
         self._h = _dll.lg_create3(int(window.winId()), 1 if under else 0, 1 if self.visible else 0)
+        backdrop = backdrop or ("wgc" if popup else "dda")   # popup: standart wgc (oynalarni alohida olish)
+        self.backdrop = backdrop   # "dda": ekran kadri (eski); "wgc": popup ostidagi oynalarni alohida olish (o'zimizniki kadrga tushmaydi)
+        if backdrop == "wgc":
+            _dll.lg_set_backend(self._h, 1)
         self.popup = popup   # popup: orqa fon nusxasi ichkarida muzlatiladi, matn rangi orqa fon yorqinligiga moslanadi, tayyor bo'lgach ko'rsatiladi
         self._ink_light = None
         self._last_ink = 0.0
@@ -105,6 +111,7 @@ class NativeController(GlassController):
             _dll.lg_set_frost(self._h, float(POPUP_FROST if frost is None else frost) * window.devicePixelRatioF())
             _dll.lg_set_edge(self._h, float(edge) * window.devicePixelRatioF())   # qirra refraksiyasi Gauss xiraligi (0 = o'chiq)   # frost: popup ichi haqiqiy Gauss xiraligi (mip bloklari emas)
         self._content_dirty = True
+        self._quiet_until = 0.0   # kontent rasmga olingach o'zi chiqargan hodisalar (parda show/hide) qayta rasmga olishni ishga tushirmasin
         self._content_img = None
         if under:   # oyna kontenti shisha bilan BIR oynada chiziladi; Qt oynasi faqat ko'rinmas kirish vositasi
             window.setWindowOpacity(0.0 if popup else 0.02)   # popup: birinchi kadrdan keyin 0.02 (deyarli ko'rinmas kirish vositasi)
@@ -195,7 +202,7 @@ class NativeController(GlassController):
         if not self._h:
             return
         self._content_idle += 1
-        if not self._content_dirty and self._content_idle < 30:
+        if not self._content_dirty and self._content_idle < 120:
             return
         w = self.window
         if not w.isVisible():
@@ -218,6 +225,7 @@ class NativeController(GlassController):
         if veil is not None:
             veil.show()
             veil.lower()
+        self._quiet_until = time.perf_counter() + 0.08
         self._content_img = img   # DLL nusxa oladi, lekin rasm qo'ng'iroq davomida tirik bo'lsin
         addr = ctypes.addressof(ctypes.c_char.from_buffer(img.bits()))
         _dll.lg_set_content(self._h, ctypes.c_void_p(addr), pw, ph, img.bytesPerLine())
@@ -256,7 +264,8 @@ class NativeController(GlassController):
     def _filter(self, obj, ev):
         t = ev.type()
         if self.under and t in self._CONTENT_EVENTS and (obj is self.window or self._mine(obj)):
-            self._content_dirty = True
+            if t in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease, QEvent.KeyPress, QEvent.KeyRelease) or time.perf_counter() >= self._quiet_until:
+                self._content_dirty = True
         if t == QEvent.MouseMove and hasattr(ev, "globalPosition"):
             i = self._index_at(ev.globalPosition().toPoint())
             if i != self.scene.hovered:
