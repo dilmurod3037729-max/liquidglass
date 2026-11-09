@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+        working-directory: web
+
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S core -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --config Release
+      - run: ctest --test-dir build -C Release --output-on-failure
+
+  win-native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: win-native\build_dll.bat
+        shell: cmd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lgwin-dll
+          path: |
+            win-native/lgwin.dll
+            win-native/include/lgwin.h

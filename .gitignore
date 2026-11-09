@@ -6,3 +6,7 @@ build/
 !core/native/docs/*.png
 !core/qt/docs/*.png
 !docs/native/*.png
+*.dll
+*.obj
+*.lib
+*.exp
