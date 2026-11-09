@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uz">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -22,7 +22,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">Shakllarni suring, bir-biriga yoki pastdagi tugmalarga yaqinlashtiring. Bosilgani oldinga chiqadi.</div>
+<div id="hint">Drag the shapes and bring them close to each other or to the buttons below. The one you press comes to the front.</div>
 <div id="panel"></div>
 <div id="stat"></div>
 <div id="err"></div>
@@ -39,7 +39,7 @@ try {
   addEventListener('resize', draw);
 
   const label = (html) => { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = html; document.body.appendChild(el); return el; };
-  glass.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Karta<small>sudrab suring</small>'));
+  glass.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Card<small>drag me</small>'));
   glass.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Kapsula'));
   glass.add({ w: 64, h: 64, radius: 32 }, { x: W * 0.82, y: H * 0.62 }, label('+'));
   glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 - 100, y: by }, label('Tayyor'));
@@ -47,9 +47,9 @@ try {
 
   const stat = document.getElementById('stat');
   setInterval(() => { stat.textContent = `chizilgan kadr: ${glass.drawn} · ${glass.idle >= 3 ? 'bo\'sh (GPU ishlamayapti)' : 'faol'}`; }, 400);
-  // Sozlash paneli: GLASS_SCHEMA dan avtomatik quriladi
+  // Settings panel: built automatically from GLASS_SCHEMA
   const panel = document.getElementById('panel');
-  panel.innerHTML = '<h2>Oyna sozlamalari</h2>';
+  panel.innerHTML = '<h2>Glass settings</h2>';
   const syncs = [];
   for (const [k, sp] of Object.entries(GLASS_SCHEMA)) {
     const l = document.createElement('label');

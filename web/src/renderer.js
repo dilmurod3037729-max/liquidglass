@@ -24,7 +24,7 @@ function setupTexture(gl, tex) {
 export class Renderer {
   constructor(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
-    if (!gl) throw new Error('WebGL2 qo\'llab-quvvatlanmaydi');
+    if (!gl) throw new Error('WebGL2 is not supported');
     this.gl = gl;
     this.canvas = canvas;
     const prog = gl.createProgram();

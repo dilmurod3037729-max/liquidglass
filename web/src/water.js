@@ -11,7 +11,7 @@ void main(){ vec2 c = (gl_PointCoord - 0.5) * uSize; o = vec4(exp(-dot(c, c) / (
 // Shisha shaderidagi geometrik maydon (sdDrop/sdAll) o'rniga zarrachalar zichligi maydonidan hosil bo'lgan masofa
 function glassSource() {
   const a = FRAGMENT.indexOf('// Bitta tomchi: BITTA jism'), b = FRAGMENT.indexOf('vec3 bgAt(');
-  if (a < 0 || b < 0) throw new Error('liquidglass: shader markerlari topilmadi (sync-shader ishga tushirilganmi?)');
+  if (a < 0 || b < 0) throw new Error('liquidglass: shader markers not found (was sync-shader run?)');
   const field = `float rho(vec2 p){ return texture(uField, vec2(p.x / uRes.x, 1.0 - p.y / uRes.y)).r; }
 float sdAll(vec2 p){
   float e = 2.0;
@@ -56,8 +56,8 @@ export const defaultGlass = () => ({ ior: 1.55, thick: 70, bevel: 44, disp: 0.05
 export class LiquidWater {
   constructor(canvas, { source = null, preset = 'water', fluid = {}, glass = {} } = {}) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
-    if (!gl) throw new Error('WebGL2 qo\'llab-quvvatlanmaydi');
-    if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) throw new Error('Float render qo\'llab-quvvatlanmaydi');
+    if (!gl) throw new Error('WebGL2 is not supported');
+    if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) throw new Error('Float render targets are not supported');
     this.gl = gl; this.canvas = canvas;
     this.fluid = new FluidSim().preset(preset).set(fluid);
     this.glass = { ...defaultGlass(), ...glass };
@@ -104,7 +104,7 @@ export class LiquidWater {
     texParams(gl, this.fieldTex, false);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fieldTex, 0);
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('liquidglass: maydon FBO\'si to\'liq emas');
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('liquidglass: field FBO is incomplete');
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.wake();
   }

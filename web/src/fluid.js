@@ -4,16 +4,16 @@
 
 /** Sozlamalar: ruxsat etilgan oraliq (min..max) tashqarisidagi qiymat avtomatik qirqiladi — simulyatsiya portlamaydi. */
 export const PARAM_SCHEMA = {
-  stiffness:     { min: 4000, max: 60000, def: 22000, step: 500,  label: 'Siqilmaslik (qattiqlik)' },
-  cohesion:      { min: 0,    max: 8000,  def: 1800,  step: 50,   label: 'Yopishish (sirt tarangligi)' },
-  viscosity:     { min: 0,    max: 80,    def: 30,    step: 1,    label: 'Qovushqoqlik' },
-  glassFriction: { min: 0,    max: 25,    def: 6,     step: 0.5,  label: 'Oyna ishqalanishi (og\'irlik)' },
-  shapeMemory:   { min: 0,    max: 100,   def: 30,    step: 1,    label: 'UI shakliga qaytish' },
-  grabForce:     { min: 20,   max: 400,   def: 140,   step: 5,    label: 'Tortish kuchi' },
-  grabSize:      { min: 30,   max: 200,   def: 85,    step: 5,    label: 'Ushlash hajmi (px)' },
-  grabBody:      { min: 0,    max: 1,     def: 0.3,   step: 0.05, label: 'Butun tanaga tortish ulushi' },
-  spacing:       { min: 12,   max: 28,    def: 18,    step: 1,    label: 'Zarracha masofasi (px, kichik = aniqroq/og\'irroq)' },
-  maxSpeed:      { min: 400,  max: 4000,  def: 1800,  step: 100,  label: 'Eng katta tezlik (px/s)' },
+  stiffness:     { min: 4000, max: 60000, def: 22000, step: 500,  label: 'Incompressibility (stiffness)' },
+  cohesion:      { min: 0,    max: 8000,  def: 1800,  step: 50,   label: 'Cohesion (surface tension)' },
+  viscosity:     { min: 0,    max: 80,    def: 30,    step: 1,    label: 'Viscosity' },
+  glassFriction: { min: 0,    max: 25,    def: 6,     step: 0.5,  label: 'Glass friction (heaviness)' },
+  shapeMemory:   { min: 0,    max: 100,   def: 30,    step: 1,    label: 'Return to UI shape' },
+  grabForce:     { min: 20,   max: 400,   def: 140,   step: 5,    label: 'Grab force' },
+  grabSize:      { min: 30,   max: 200,   def: 85,    step: 5,    label: 'Grab size (px)' },
+  grabBody:      { min: 0,    max: 1,     def: 0.3,   step: 0.05, label: 'Share of whole-body pull' },
+  spacing:       { min: 12,   max: 28,    def: 18,    step: 1,    label: 'Particle spacing (px, smaller = sharper/heavier)' },
+  maxSpeed:      { min: 400,  max: 4000,  def: 1800,  step: 100,  label: 'Max speed (px/s)' },
 };
 
 /** Tayyor materiallar: defaultlardan farqlarigina. */
@@ -51,7 +51,7 @@ export class FluidSim {
     let rebuild = false;
     for (const [k, v] of Object.entries(p)) {
       const s = PARAM_SCHEMA[k];
-      if (!s) throw new Error(`liquidglass: noma'lum sozlama "${k}"`);
+      if (!s) throw new Error(`liquidglass: unknown setting "${k}"`);
       const nv = clamp(Number(v), s.min, s.max);
       if (!Number.isFinite(nv)) continue;
       if (k === 'spacing' && nv !== this.params.spacing) rebuild = true;
@@ -62,7 +62,7 @@ export class FluidSim {
   }
 
   preset(name) {
-    if (!PRESETS[name]) throw new Error(`liquidglass: noma'lum preset "${name}"`);
+    if (!PRESETS[name]) throw new Error(`liquidglass: unknown preset "${name}"`);
     const all = {};
     for (const k of Object.keys(PARAM_SCHEMA)) all[k] = PARAM_SCHEMA[k].def;
     return this.set({ ...all, ...PRESETS[name] });

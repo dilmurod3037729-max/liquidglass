@@ -13,15 +13,15 @@ export const defaultParams = () => ({
 
 /** Qattiq oyna sozlamalari: ruxsat etilgan oraliq va yorliq (panel va hujjat shundan quriladi). */
 export const GLASS_SCHEMA = {
-  ior:     { min: 1.1, max: 2,   step: 0.01,  label: 'Sinish ko\'rsatkichi' },
-  thick:   { min: 0,   max: 160, step: 1,     label: 'Qalinlik' },
-  bevel:   { min: 8,   max: 90,  step: 1,     label: 'Chet kengligi (px)' },
-  disp:    { min: 0,   max: 0.15, step: 0.002, label: 'Dispersiya (rang ajralishi)' },
+  ior:     { min: 1.1, max: 2,   step: 0.01,  label: 'Index of refraction' },
+  thick:   { min: 0,   max: 160, step: 1,     label: 'Thickness' },
+  bevel:   { min: 8,   max: 90,  step: 1,     label: 'Rim width (px)' },
+  disp:    { min: 0,   max: 0.15, step: 0.002, label: 'Dispersion (colour separation)' },
   blur:    { min: 0,   max: 4,   step: 0.05,  label: 'Blur' },
-  merge:   { min: 0,   max: 120, step: 1,     label: 'Qo\'shilish radiusi (px)' },
-  elastic: { min: 0,   max: 2.5, step: 0.05,  label: 'Suyuq cho\'zilish (0 = qattiq)' },
-  spec:    { min: 0,   max: 2,   step: 0.05,  label: 'Yaltirash' },
-  absorb:  { min: 0,   max: 2,   step: 0.05,  label: 'Yutilish (tus)' },
+  merge:   { min: 0,   max: 120, step: 1,     label: 'Merge radius (px)' },
+  elastic: { min: 0,   max: 2.5, step: 0.05,  label: 'Liquid stretch (0 = rigid)' },
+  spec:    { min: 0,   max: 2,   step: 0.05,  label: 'Specular' },
+  absorb:  { min: 0,   max: 2,   step: 0.05,  label: 'Absorption (tint)' },
 };
 
 export function sdRoundRect(px, py, hw, hh, r) {

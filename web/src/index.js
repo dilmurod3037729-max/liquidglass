@@ -12,6 +12,6 @@ export { LiquidWater, defaultGlass } from './water.js';
 export function createLiquidGlass(canvas, { mode = 'glass', ...opts } = {}) {
   if (mode === 'water') return new LiquidWater(canvas, opts);
   if (mode === 'glass') return new LiquidGlass(canvas, opts);
-  throw new Error(`liquidglass: noma'lum mode "${mode}" ('glass' | 'water')`);
+  throw new Error(`liquidglass: unknown mode "${mode}" ('glass' | 'water')`);
 }
 

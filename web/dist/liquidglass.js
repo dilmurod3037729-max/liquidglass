@@ -24,15 +24,15 @@ const defaultParams = () => ({
 
 /** Qattiq oyna sozlamalari: ruxsat etilgan oraliq va yorliq (panel va hujjat shundan quriladi). */
 const GLASS_SCHEMA = {
-  ior:     { min: 1.1, max: 2,   step: 0.01,  label: 'Sinish ko\'rsatkichi' },
-  thick:   { min: 0,   max: 160, step: 1,     label: 'Qalinlik' },
-  bevel:   { min: 8,   max: 90,  step: 1,     label: 'Chet kengligi (px)' },
-  disp:    { min: 0,   max: 0.15, step: 0.002, label: 'Dispersiya (rang ajralishi)' },
+  ior:     { min: 1.1, max: 2,   step: 0.01,  label: 'Index of refraction' },
+  thick:   { min: 0,   max: 160, step: 1,     label: 'Thickness' },
+  bevel:   { min: 8,   max: 90,  step: 1,     label: 'Rim width (px)' },
+  disp:    { min: 0,   max: 0.15, step: 0.002, label: 'Dispersion (colour separation)' },
   blur:    { min: 0,   max: 4,   step: 0.05,  label: 'Blur' },
-  merge:   { min: 0,   max: 120, step: 1,     label: 'Qo\'shilish radiusi (px)' },
-  elastic: { min: 0,   max: 2.5, step: 0.05,  label: 'Suyuq cho\'zilish (0 = qattiq)' },
-  spec:    { min: 0,   max: 2,   step: 0.05,  label: 'Yaltirash' },
-  absorb:  { min: 0,   max: 2,   step: 0.05,  label: 'Yutilish (tus)' },
+  merge:   { min: 0,   max: 120, step: 1,     label: 'Merge radius (px)' },
+  elastic: { min: 0,   max: 2.5, step: 0.05,  label: 'Liquid stretch (0 = rigid)' },
+  spec:    { min: 0,   max: 2,   step: 0.05,  label: 'Specular' },
+  absorb:  { min: 0,   max: 2,   step: 0.05,  label: 'Absorption (tint)' },
 };
 
 function sdRoundRect(px, py, hw, hh, r) {
@@ -267,7 +267,7 @@ function setupTexture(gl, tex) {
 class Renderer {
   constructor(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
-    if (!gl) throw new Error('WebGL2 qo\'llab-quvvatlanmaydi');
+    if (!gl) throw new Error('WebGL2 is not supported');
     this.gl = gl;
     this.canvas = canvas;
     const prog = gl.createProgram();
@@ -516,16 +516,16 @@ __lg.LiquidGlass = LiquidGlass;
 
 /** Sozlamalar: ruxsat etilgan oraliq (min..max) tashqarisidagi qiymat avtomatik qirqiladi — simulyatsiya portlamaydi. */
 const PARAM_SCHEMA = {
-  stiffness:     { min: 4000, max: 60000, def: 22000, step: 500,  label: 'Siqilmaslik (qattiqlik)' },
-  cohesion:      { min: 0,    max: 8000,  def: 1800,  step: 50,   label: 'Yopishish (sirt tarangligi)' },
-  viscosity:     { min: 0,    max: 80,    def: 30,    step: 1,    label: 'Qovushqoqlik' },
-  glassFriction: { min: 0,    max: 25,    def: 6,     step: 0.5,  label: 'Oyna ishqalanishi (og\'irlik)' },
-  shapeMemory:   { min: 0,    max: 100,   def: 30,    step: 1,    label: 'UI shakliga qaytish' },
-  grabForce:     { min: 20,   max: 400,   def: 140,   step: 5,    label: 'Tortish kuchi' },
-  grabSize:      { min: 30,   max: 200,   def: 85,    step: 5,    label: 'Ushlash hajmi (px)' },
-  grabBody:      { min: 0,    max: 1,     def: 0.3,   step: 0.05, label: 'Butun tanaga tortish ulushi' },
-  spacing:       { min: 12,   max: 28,    def: 18,    step: 1,    label: 'Zarracha masofasi (px, kichik = aniqroq/og\'irroq)' },
-  maxSpeed:      { min: 400,  max: 4000,  def: 1800,  step: 100,  label: 'Eng katta tezlik (px/s)' },
+  stiffness:     { min: 4000, max: 60000, def: 22000, step: 500,  label: 'Incompressibility (stiffness)' },
+  cohesion:      { min: 0,    max: 8000,  def: 1800,  step: 50,   label: 'Cohesion (surface tension)' },
+  viscosity:     { min: 0,    max: 80,    def: 30,    step: 1,    label: 'Viscosity' },
+  glassFriction: { min: 0,    max: 25,    def: 6,     step: 0.5,  label: 'Glass friction (heaviness)' },
+  shapeMemory:   { min: 0,    max: 100,   def: 30,    step: 1,    label: 'Return to UI shape' },
+  grabForce:     { min: 20,   max: 400,   def: 140,   step: 5,    label: 'Grab force' },
+  grabSize:      { min: 30,   max: 200,   def: 85,    step: 5,    label: 'Grab size (px)' },
+  grabBody:      { min: 0,    max: 1,     def: 0.3,   step: 0.05, label: 'Share of whole-body pull' },
+  spacing:       { min: 12,   max: 28,    def: 18,    step: 1,    label: 'Particle spacing (px, smaller = sharper/heavier)' },
+  maxSpeed:      { min: 400,  max: 4000,  def: 1800,  step: 100,  label: 'Max speed (px/s)' },
 };
 
 /** Tayyor materiallar: defaultlardan farqlarigina. */
@@ -563,7 +563,7 @@ class FluidSim {
     let rebuild = false;
     for (const [k, v] of Object.entries(p)) {
       const s = PARAM_SCHEMA[k];
-      if (!s) throw new Error(`liquidglass: noma'lum sozlama "${k}"`);
+      if (!s) throw new Error(`liquidglass: unknown setting "${k}"`);
       const nv = clamp(Number(v), s.min, s.max);
       if (!Number.isFinite(nv)) continue;
       if (k === 'spacing' && nv !== this.params.spacing) rebuild = true;
@@ -574,7 +574,7 @@ class FluidSim {
   }
 
   preset(name) {
-    if (!PRESETS[name]) throw new Error(`liquidglass: noma'lum preset "${name}"`);
+    if (!PRESETS[name]) throw new Error(`liquidglass: unknown preset "${name}"`);
     const all = {};
     for (const k of Object.keys(PARAM_SCHEMA)) all[k] = PARAM_SCHEMA[k].def;
     return this.set({ ...all, ...PRESETS[name] });
@@ -740,7 +740,7 @@ void main(){ vec2 c = (gl_PointCoord - 0.5) * uSize; o = vec4(exp(-dot(c, c) / (
 // Shisha shaderidagi geometrik maydon (sdDrop/sdAll) o'rniga zarrachalar zichligi maydonidan hosil bo'lgan masofa
 function glassSource() {
   const a = FRAGMENT.indexOf('// Bitta tomchi: BITTA jism'), b = FRAGMENT.indexOf('vec3 bgAt(');
-  if (a < 0 || b < 0) throw new Error('liquidglass: shader markerlari topilmadi (sync-shader ishga tushirilganmi?)');
+  if (a < 0 || b < 0) throw new Error('liquidglass: shader markers not found (was sync-shader run?)');
   const field = `float rho(vec2 p){ return texture(uField, vec2(p.x / uRes.x, 1.0 - p.y / uRes.y)).r; }
 float sdAll(vec2 p){
   float e = 2.0;
@@ -785,8 +785,8 @@ const defaultGlass = () => ({ ior: 1.55, thick: 70, bevel: 44, disp: 0.05, blur:
 class LiquidWater {
   constructor(canvas, { source = null, preset = 'water', fluid = {}, glass = {} } = {}) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
-    if (!gl) throw new Error('WebGL2 qo\'llab-quvvatlanmaydi');
-    if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) throw new Error('Float render qo\'llab-quvvatlanmaydi');
+    if (!gl) throw new Error('WebGL2 is not supported');
+    if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) throw new Error('Float render targets are not supported');
     this.gl = gl; this.canvas = canvas;
     this.fluid = new FluidSim().preset(preset).set(fluid);
     this.glass = { ...defaultGlass(), ...glass };
@@ -833,7 +833,7 @@ class LiquidWater {
     texParams(gl, this.fieldTex, false);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fieldTex, 0);
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('liquidglass: maydon FBO\'si to\'liq emas');
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('liquidglass: field FBO is incomplete');
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.wake();
   }
@@ -1118,7 +1118,7 @@ const { LiquidGlass } = __lg;
 function createLiquidGlass(canvas, { mode = 'glass', ...opts } = {}) {
   if (mode === 'water') return new LiquidWater(canvas, opts);
   if (mode === 'glass') return new LiquidGlass(canvas, opts);
-  throw new Error(`liquidglass: noma'lum mode "${mode}" ('glass' | 'water')`);
+  throw new Error(`liquidglass: unknown mode "${mode}" ('glass' | 'water')`);
 }
 
 

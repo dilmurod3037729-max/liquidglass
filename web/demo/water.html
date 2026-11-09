@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uz">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -25,7 +25,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">Tomchini ushlab torting. O'ngdagi panelda suvning xususiyatlarini jonli o'zgartiring yoki tayyor materialni tanlang.</div>
+<div id="hint">Grab the drop and pull it. Tune the water live in the panel on the right or pick a preset.</div>
 <div id="panel"></div>
 <div id="stat"></div>
 <div id="err"></div>
@@ -41,13 +41,13 @@ try {
   draw(); addEventListener('resize', draw);
 
   const label = (html) => { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = html; document.body.appendChild(el); return el; };
-  water.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Karta<small>sudrab suring</small>'));
+  water.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Card<small>drag me</small>'));
   water.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Kapsula'));
   water.add({ w: 64, h: 64, radius: 32 }, { x: W * 0.82, y: H * 0.62 }, label('+'));
   water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 - 100, y: by }, label('Tayyor'));
   water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 + 100, y: by }, label('Bekor'));
 
-  // Panel: sozlamalar sxemadan avtomatik quriladi
+  // Panel: settings are built from the schema
   const panel = document.getElementById('panel');
   panel.innerHTML = '<h2>Suv xususiyatlari</h2><div id="presets"></div><h3>Suyuqlik</h3><div id="fl"></div><h3>Shisha</h3><div id="gl"></div>';
   const sliders = [];
