@@ -11,5 +11,5 @@ set "CPPWINRT="
 for /f "delims=" %%d in ('dir /b /ad /o-n "%KITS%\10.*" 2^>nul') do if not defined CPPWINRT if exist "%KITS%\%%d\cppwinrt\winrt\base.h" set "CPPWINRT=%KITS%\%%d\cppwinrt"
 if not defined CPPWINRT echo Windows SDK with C++/WinRT headers not found & exit /b 1
 cd /d "%~dp0"
-cl /nologo /std:c++17 /O2 /EHsc /W3 /LD /I "%CPPWINRT%" lgwin.cpp /Fe:lgwin.dll user32.lib d3d11.lib dxgi.lib dcomp.lib dwmapi.lib d3dcompiler.lib windowsapp.lib
+cl /nologo /std:c++20 /O2 /EHsc /W3 /LD /I "%CPPWINRT%" lgwin.cpp /Fe:lgwin.dll user32.lib d3d11.lib dxgi.lib dcomp.lib dwmapi.lib d3dcompiler.lib windowsapp.lib
 exit /b %errorlevel%
