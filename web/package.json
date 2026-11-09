@@ -4,13 +4,15 @@
   "description": "Physically based liquid glass (refraction, dispersion, fluid merging, depth) for the web, WebGL2",
   "type": "module",
   "main": "src/index.js",
+  "types": "index.d.ts",
   "exports": {
-    ".": "./src/index.js",
+    ".": { "types": "./index.d.ts", "default": "./src/index.js" },
     "./electron": "./electron.cjs",
     "./dist": "./dist/liquidglass.js"
   },
   "files": [
     "src",
+    "index.d.ts",
     "dist",
     "electron.cjs",
     "README.md",
