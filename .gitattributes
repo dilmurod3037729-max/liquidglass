@@ -1,0 +1,9 @@
+* text=auto
+*.bat text eol=crlf
+*.sh text eol=lf
+web/dist/** linguist-generated
+*.inc linguist-language=HLSL
+*.png binary
+*.gif binary
+*.mp4 binary
+*.dll binary

@@ -1,0 +1,20 @@
+name: Bug report
+description: Something renders wrong or crashes
+body:
+  - type: dropdown
+    id: target
+    attributes:
+      label: Which part?
+      options: [Web (WebGL2), Qt / C++ core, Windows native (lgwin.dll), Python]
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes: {label: What happened and what did you expect?}
+    validations: {required: true}
+  - type: input
+    id: env
+    attributes: {label: OS, GPU, browser or Qt version, library version}
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes: {label: Steps to reproduce, description: A screenshot helps. Remove personal data first.}
