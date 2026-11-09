@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-09
+
 ### Added
 - CI: web tests, core on Linux, Windows and macOS, Windows DLL build. `build_dll.bat` finds any installed Visual Studio.
 - Release workflow that attaches a prebuilt `lgwin.dll` to a tagged release.
@@ -24,3 +26,6 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [0.4.0]
 
 - Native Windows backend (`lgwin.dll`), Qt 6 backend, per-shape materials, popups, tuner.
+
+[Unreleased]: https://github.com/dilmurod3037729-max/liquidglass/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/dilmurod3037729-max/liquidglass/compare/v0.4.0...v0.5.0

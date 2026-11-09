@@ -55,7 +55,7 @@ WebGL cannot read the page DOM, so the glass refracts a `source` (canvas, image 
 Run the demo locally with `node web/scripts/serve.mjs` and open `http://localhost:5173/demo/`. More in [`web/README.md`](web/README.md).
 
 **Python / Qt on Windows**: turns the real buttons of an existing PySide6 app into glass without touching its code
-(see [`python/README.md`](python/README.md)). Build the DLL first (needs Visual Studio with the C++ workload):
+(see [`python/README.md`](python/README.md)). Download `lgwin.dll` from the [latest release](https://github.com/dilmurod3037729-max/liquidglass/releases/latest) into `win-native/`, or build it (needs Visual Studio with the C++ workload):
 
 ```
 win-native\build_dll.bat
@@ -68,7 +68,7 @@ python python\popup_demo.py
 |---|---|---|---|
 | Browsers with WebGL2, Electron | WebGL2 | [`web/`](web/) | Stable, on npm |
 | C++17 core with OpenGL 3.3 and Qt 6 backends | OpenGL | [`core/`](core/) | Stable, golden-tested against the JS port |
-| Windows 11, any window or popup | Direct3D 11 | [`win-native/`](win-native/) | Works, build from source |
+| Windows 11, any window or popup | Direct3D 11 | [`win-native/`](win-native/) | Works, DLL on the releases page |
 | PySide6 apps | Direct3D 11 / OpenGL | [`python/`](python/) | Works, run from source |
 | Windows 10 | | | Untested, may show the yellow capture border |
 
@@ -108,7 +108,7 @@ proof that the backend is usable for real work; its source is not part of this r
   shadows are not part of the backdrop, and each popup has a full-desktop transparent overlay, so several popups cost proportionally
   more. A hardware Direct3D 11 GPU is required.
 - Web: the glass refracts a `source` you provide, not the live DOM.
-- The Windows DLL is not code-signed and not yet attached to a release; build it from source.
+- The Windows DLL is not code-signed (Windows SmartScreen may warn). Prebuilt binaries are attached to each [release](https://github.com/dilmurod3037729-max/liquidglass/releases); you can also build from source.
 
 ## Repository layout
 
