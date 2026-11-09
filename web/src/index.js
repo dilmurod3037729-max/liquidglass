@@ -8,7 +8,7 @@ export { DomGlass, attach } from './dom.js';
 export { FluidSim, PARAM_SCHEMA, PRESETS } from './fluid.js';
 export { LiquidWater, defaultGlass } from './water.js';
 
-/** Bitta kirish nuqtasi: mode 'glass' (qattiq oyna, standart) yoki 'water' (zarrachali suv). */
+/** Single entry point: mode 'glass' (rigid glass, the default) or 'water' (particle water). */
 export function createLiquidGlass(canvas, { mode = 'glass', ...opts } = {}) {
   if (mode === 'water') return new LiquidWater(canvas, opts);
   if (mode === 'glass') return new LiquidGlass(canvas, opts);

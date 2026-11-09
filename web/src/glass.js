@@ -2,20 +2,20 @@ import { Scene } from './scene.js';
 import { Renderer } from './renderer.js';
 
 /**
- * Yuqori darajali API: canvas + shisha shakllar + sudrash + kadrni faqat kerak bo'lganda chizish.
+ * High-level API: canvas + glass shapes + dragging + drawing a frame only when needed.
  *
  *   const glass = new LiquidGlass(canvas, { source: sceneCanvasOrImageOrVideo });
  *   glass.add({ w: 220, h: 58, radius: 29 }, { x: 300, y: 200 }, labelElement);
  *   glass.params.merge = 60;
  *
- * source — shisha sinduradigan sahna (canvas/img/video/ImageBitmap). O'zgarsa: glass.setSource(...) yoki glass.invalidate().
- * Video yoki doimiy o'zgaradigan manba uchun { live: true }.
+ * source: the scene the glass refracts (canvas/img/video/ImageBitmap). When it changes: glass.setSource(...) or glass.invalidate().
+ * For video or a constantly changing source use { live: true }.
  */
 export class LiquidGlass {
   constructor(canvas, { source = null, live = false, maxDpr = 1.5, elastic = 0 } = {}) {
     this.canvas = canvas;
     this.scene = new Scene();
-    this.scene.params.elastic = elastic;   // 0 = toza qattiq oyna; > 0 = suyuq cho'zilish
+    this.scene.params.elastic = elastic;   // 0 = clean rigid glass; > 0 = liquid stretching
     this.renderer = new Renderer(canvas);
     this.live = live;
     this.maxDpr = maxDpr;

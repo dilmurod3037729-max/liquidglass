@@ -385,20 +385,20 @@ __lg.Renderer = Renderer;
 const { Scene } = __lg;
 const { Renderer } = __lg;
 /**
- * Yuqori darajali API: canvas + shisha shakllar + sudrash + kadrni faqat kerak bo'lganda chizish.
+ * High-level API: canvas + glass shapes + dragging + drawing a frame only when needed.
  *
  *   const glass = new LiquidGlass(canvas, { source: sceneCanvasOrImageOrVideo });
  *   glass.add({ w: 220, h: 58, radius: 29 }, { x: 300, y: 200 }, labelElement);
  *   glass.params.merge = 60;
  *
- * source — shisha sinduradigan sahna (canvas/img/video/ImageBitmap). O'zgarsa: glass.setSource(...) yoki glass.invalidate().
- * Video yoki doimiy o'zgaradigan manba uchun { live: true }.
+ * source: the scene the glass refracts (canvas/img/video/ImageBitmap). When it changes: glass.setSource(...) or glass.invalidate().
+ * For video or a constantly changing source use { live: true }.
  */
 class LiquidGlass {
   constructor(canvas, { source = null, live = false, maxDpr = 1.5, elastic = 0 } = {}) {
     this.canvas = canvas;
     this.scene = new Scene();
-    this.scene.params.elastic = elastic;   // 0 = toza qattiq oyna; > 0 = suyuq cho'zilish
+    this.scene.params.elastic = elastic;   // 0 = clean rigid glass; > 0 = liquid stretching
     this.renderer = new Renderer(canvas);
     this.live = live;
     this.maxDpr = maxDpr;
@@ -916,11 +916,11 @@ const DEFAULTS = {
 };
 
 /**
- * Mavjud sahifa/ilovadagi HAQIQIY elementlarni (tugmalarni) shisha materialga almashtiradi, ilova kodiga tegmasdan.
- * Asl element ko'rinmas (opacity 0) lekin bosiladigan qoladi; uning o'rnida shisha va yozuv nusxasi turadi.
+ * Replaces the REAL elements (buttons) of an existing page or app with a glass material, without touching the app's code.
+ * The original element becomes invisible (opacity 0) but stays clickable; glass and a copy of its label take its place.
  *
- * Ish tartibi: prepare() -> (sahifa surati olinadi, asl elementlar yashirin) -> start(surat). Sahifa o'zgarsa isDirty = true.
- * Suratni kim oladi: Electron'da main jarayon (electron.js), brauzerda `snapshot` funksiyasi (attach).
+ * Order: prepare() -> (the page image is taken, the original elements are hidden) -> start(image). When the page changes, isDirty = true.
+ * Who takes the image: in Electron the main process (electron.js), in a browser the `snapshot` function (attach).
  */
 class DomGlass {
   constructor(opts = {}) {
@@ -992,7 +992,7 @@ class DomGlass {
     return out;
   }
 
-  /** 1-qadam: shisha bo'ladigan elementlarni topib, asl ko'rinishini yashiradi. Qaytaradi: elementlar soni. */
+  /** Step 1: finds the elements that become glass and hides their original look. Returns the number of elements. */
   prepare() {
     this.busy = true;
     this.items = this.#collect();
@@ -1013,7 +1013,7 @@ class DomGlass {
     this.hidden.forEach(([el, p]) => { el.style.opacity = p; }); this.hidden = [];
   }
 
-  /** dataURL (yoki URL) dan suratni yuklab, start() ni chaqiradi */
+  /** Loads the image from a dataURL (or URL) and calls start() */
   startFromUrl(url) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -1023,7 +1023,7 @@ class DomGlass {
     });
   }
 
-  /** 2-qadam: surat (canvas/img/ImageBitmap) tayyor, shisha qatlamini quradi. */
+  /** Step 2: the image (canvas/img/ImageBitmap) is ready; builds the glass layer. */
   start(source) {
     const o = this.o;
     const cv = document.createElement('canvas');
@@ -1074,7 +1074,7 @@ class DomGlass {
     return this.items.length;
   }
 
-  /** Brauzer rejimi uchun to'liq sikl: snapshot() — suratni qaytaradigan async funksiya (canvas/img/ImageBitmap) */
+  /** Full cycle for browser mode: snapshot() is an async function that returns the image (canvas/img/ImageBitmap) */
   async cycle(snapshot) {
     this.teardown();
     this.prepare();
@@ -1090,9 +1090,9 @@ class DomGlass {
 }
 
 /**
- * Brauzer/ixtiyoriy muhit uchun qisqa kirish: sahifa o'zgarsa shisha o'zi qayta quriladi.
+ * Short entry point for a browser or any other host: when the page changes, the glass rebuilds itself.
  *   attach({ selector: 'button, .btn', snapshot: async () => await html2canvas(document.body) })
- * (Electron uchun `electron.js` dagi enable() ishlatiladi.)
+ * (For Electron use enable() from `electron.js`.)
  */
 function attach(opts = {}) {
   const d = new DomGlass(opts);
@@ -1114,7 +1114,7 @@ const { LiquidWater } = __lg;
 const { Renderer } = __lg;
 const { LiquidGlass } = __lg;
 
-/** Bitta kirish nuqtasi: mode 'glass' (qattiq oyna, standart) yoki 'water' (zarrachali suv). */
+/** Single entry point: mode 'glass' (rigid glass, the default) or 'water' (particle water). */
 function createLiquidGlass(canvas, { mode = 'glass', ...opts } = {}) {
   if (mode === 'water') return new LiquidWater(canvas, opts);
   if (mode === 'glass') return new LiquidGlass(canvas, opts);
