@@ -92,6 +92,16 @@ still while the glass moves over it.
 - **Throttled when busy.** Redraws caused by a changing backdrop are rate-limited per window, so several glass windows over a
   60 Hz backdrop do not saturate the GPU.
 
+### Proof: the real desktop, no synthetic background
+
+![A glass terminal moving over a real Windows 11 desktop](docs/native/terminal_desktop_30s.gif)
+
+[Full quality MP4](docs/native/terminal_desktop_30s.mp4) (30 s, 1920x1080, screen recording through Desktop Duplication).
+A glass terminal is moved over the real desktop wallpaper, the Windows Settings Wi-Fi page and the quick-settings Wi-Fi flyout
+(drawn by Windows above the glass), and across the monitor edge, while `cmatrix`, `cacafire`, `cbonsai` and `btop` run inside it.
+The glass refracts live windows and live terminal output, not a prepared image. Personal details (user name, e-mail, host name,
+taskbar) are blurred.
+
 ### Built with it: a glass terminal
 
 ![GlassTerm: a terminal rendered as thick liquid glass](docs/native/terminal.png)
