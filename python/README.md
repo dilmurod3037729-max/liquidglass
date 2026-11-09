@@ -1,91 +1,97 @@
 # liquidglass_qt (PySide6)
 
-PySide6 (Qt Widgets) ilovasining **istalgan vidjetlarini** (tugma, karta/konteyner, jadval, kiritish maydoni, popup/dialog) suyuq shisha
-materialga aylantiradi, ilova kodiga tegmasdan. Qo'shimcha paket kerak emas (faqat PySide6): shisha `QOpenGLWidget` ichida,
-shader `../core/shaders/liquidglass.frag` (veb va C++ bilan bir xil).
+Turns **any widget** of a PySide6 (Qt Widgets) app (button, card/container, table, input field, popup/dialog) into a liquid glass
+material, without touching the app's code. No extra package is needed (only PySide6): the glass lives in a `QOpenGLWidget`, and the
+shader is `../core/shaders/liquidglass.frag` (the same as the web and C++ versions).
 
 ```python
 from PySide6.QtGui import QSurfaceFormat
 fmt = QSurfaceFormat(); fmt.setVersion(3, 3); fmt.setProfile(QSurfaceFormat.CoreProfile)
-QSurfaceFormat.setDefaultFormat(fmt)          # QApplication yaratilishidan OLDIN
+QSurfaceFormat.setDefaultFormat(fmt)          # BEFORE the QApplication is created
 
 from liquidglass_qt import attach, Glass
 app = QApplication(sys.argv)
 window = MainWindow(); window.show()
 
-glass = attach(window)                        # barcha QPushButton shisha; popup/dialoglar ham avtomatik
+glass = attach(window)                        # every QPushButton becomes glass; popups and dialogs too, automatically
 
-glass = attach(window, rules=[                # qayerga qanday: istagan joyga qo'llang
-    Glass(QPushButton),                                              # tugma: to'liq shisha, yozuvi ustida
-    Glass(lambda w: w.objectName() == "Card", "panel", radius=10),   # karta/konteyner: shisha ramka, ichi jonli
-    Glass(QTableView, "table"),                                      # jadval: shisha ramka, aylantirish jonli
+glass = attach(window, rules=[                # what gets which material
+    Glass(QPushButton),                                              # button: full glass, label on top
+    Glass(lambda w: w.objectName() == "Card", "panel", radius=10),   # card/container: glass frame, live inside
+    Glass(QTableView, "table"),                                      # table: glass frame, scrolling stays live
     Glass(QLineEdit, "input"),
 ], params={"bevel": 22, "shadow": 0.35})
 
-glass.add(any_widget, "panel", radius=14)     # istalgan vidjetni qo'lda qo'shish
+glass.add(any_widget, "panel", radius=14)     # add any widget by hand
 glass.remove(any_widget)
-glass.set_params(thick=50)                    # jonli sozlash
+glass.set_params(thick=50)                    # tune live
 ```
 
-## Qoidalar va materiallar
+## Rules and materials
 
 `Glass(selector, material, radius=None, **overrides)`:
 
-- **selector**: vidjet sinfi (yoki sinflar tuple'i), `objectName` (str) yoki predikat `widget -> bool`. Birinchi mos kelgan qoida ishlaydi.
-- **material**: tayyor nom yoki o'zingizniki (`dict`):
+- **selector**: a widget class (or a tuple of classes), an `objectName` (str) or a predicate `widget -> bool`. The first matching rule wins.
+- **material**: a ready-made name or your own `dict`:
 
-| Material | Qanday | bevel | thick | frame | hide | hover |
+| Material | What it is | bevel | thick | frame | hide | hover |
 |---|---|---|---|---|---|---|
-| `button` | to'liq shisha, asl tugma yashiriladi, yozuv nusxasi ustida | 1.0 | 1.0 | yo'q | ha | ha |
-| `panel` | karta/konteyner: vidjet o'z holida, ustiga shisha ramka | 0.4 | 0.25 | ha | yo'q | yo'q |
-| `table` | jadval: shisha ramka, aylantirish/tahrir jonli | 0.35 | 0.2 | ha | yo'q | yo'q |
-| `input` | kiritish maydoni | 0.5 | 0.3 | ha | yo'q | yo'q |
+| `button` | full glass, the original button is hidden, a copy of its label is drawn on top | 1.0 | 1.0 | no | yes | yes |
+| `panel` | card/container: the widget stays as it is, a glass frame is drawn over it | 0.4 | 0.25 | yes | no | no |
+| `table` | table: glass frame, scrolling and editing stay live | 0.35 | 0.2 | yes | no | no |
+| `input` | input field | 0.5 | 0.3 | yes | no | no |
 
-`bevel`/`thick` global `params` ga ko'paytiruvchi. `frame=True`: markazi shaffof, faqat qirra shisha. `hide=True`: asl vidjet ko'rinmas
-(lekin bosiladi), o'rnida shisha va yozuv nusxasi. Rang: `button` materialida asl tugma fon rangi shisha rangi bo'ladi (ko'k tugma = ko'k shisha).
+`bevel` and `thick` multiply the global `params`. `frame=True`: the centre is transparent and only the rim is glass. `hide=True`: the
+original widget is invisible (but still clickable) and glass plus a copy of the label take its place. Colour: with the `button` material
+the original button's background colour becomes the glass tint (a blue button gives blue glass).
 
 `params`: `ior`, `thick`, `bevel`, `disp`, `blur`, `spec`, `absorb`, `merge`, `shadow`.
 
-## Qanday ishlaydi
+## How it works
 
-1. Shisha qatlami **shaffof** `QOpenGLWidget`: faqat shisha va soya chiziladi, qolgan joyda ilovaning o'zi jonli ko'rinadi (jadval aylanadi, matn yoziladi).
-2. Sinish manbai: oyna surati (faqat oyna o'zgarganda olinadi). `button` kabi `hide` vidjetlar suratda ko'rinmaydi.
-3. Har bir popup/dialog (`QMessageBox` ham) ochilganda o'z shisha qatlamini oladi (`popups=True`, standart).
-4. Hover va bosish tugmani biroz kattalashtiradi.
+1. The glass layer is a **transparent** `QOpenGLWidget`: only glass and shadow are drawn, everywhere else the app itself stays live
+   (a table scrolls, text is typed).
+2. The refraction source is a snapshot of the window (retaken only when the window changes). `hide` widgets such as `button` are
+   not in the snapshot.
+3. Every popup/dialog (`QMessageBox` too) gets its own glass layer when it opens (`popups=True`, the default).
+4. Hover and press make the button grow slightly.
 
-## Tezlik (o'lchangan)
+## Speed (measured)
 
-PySide6 6.11, 1400x900 oyna (DPR 1.5), RTX 2080 SUPER:
+PySide6 6.11, 1400x900 window (DPR 1.5), RTX 2080 SUPER:
 
-| Qism | Vaqt |
+| Part | Time |
 |---|---|
-| GL chizish (`paintGL`, protsessor tomoni) | ~0.7 ms (hover animatsiyasi paytida ham shu) |
-| Sahifa surati + GPU'ga yuklash | ~20 ms, **faqat oyna o'zgarganda** |
-| Bo'sh turganda | 0 (zaxira yangilash 2.5 s da bir marta; matn maydonida fokus bo'lsa 0.5 s) |
+| GL drawing (`paintGL`, CPU side) | ~0.7 ms (the same during the hover animation) |
+| Window snapshot + GPU upload | ~20 ms, **only when the window changes** |
+| Idle | 0 (a fallback refresh once every 2.5 s; every 0.5 s while a text field has focus) |
 
-Surat olish `Paint` hodisalariga emas, haqiqiy kirish hodisalariga (bosish, klaviatura, g'ildirak, fokus) va tuzilma o'zgarishlariga
-(`LayoutRequest`, `Show/Hide`, `Resize`...) bog'langan: shisha qatlami yangilanganda Qt uning ostidagi hamma vidjetni qayta chizadi,
-shuning uchun `Paint` ni o'zgarish belgisi qilsak cheksiz sikl bo'ladi. `attach(window, idle_ms=0)` zaxira yangilashni o'chiradi.
+Snapshots are triggered by real input events (clicks, keyboard, wheel, focus) and structure changes (`LayoutRequest`, `Show/Hide`,
+`Resize`...), not by `Paint` events: when the glass layer updates, Qt repaints every widget under it, so using `Paint` as a change
+signal would loop forever. `attach(window, idle_ms=0)` turns the fallback refresh off.
 
-## Cheklovlar
+## Limitations
 
-- Sinish manbai suratdan olinadi: tez o'zgaradigan kontent (animatsiya) ramka qirrasida ~80 ms kechikib sinadi (markazi jonli, kechikmaydi).
-- `button` kabi `hide` vidjetlar faqat yoqilgan (enabled) va ko'rinadigan bo'lsa shisha bo'ladi.
-- Panel/jadval shisha ramkasi kontentni qirraga yaqin joyda biroz buradi (ramka ingichka: `bevel`/`thick` ko'paytiruvchilari bilan sozlang).
-- Qatlam/suyuq cho'zilish va bo'laklar (tile) hozircha yo'q: faqat qo'zg'almas shakllar.
-- Sinalgan: PySide6 6.11, OpenGL 3.3 core, Windows.
+- The refraction source is a snapshot: fast-changing content (animation) refracts at the frame edge with a delay of about 80 ms
+  (the centre is live and has no delay).
+- `hide` widgets such as `button` become glass only while they are enabled and visible.
+- The glass frame of a panel or table bends the content slightly near the edge (the frame is thin; tune it with the `bevel`/`thick` multipliers).
+- Layering, liquid stretching and tiles are not available yet: static shapes only.
+- Tested with PySide6 6.11, OpenGL 3.3 core, Windows.
 
 ## Native (GPU) backend: Windows
 
-`attach(window)` Windows'da `win-native/lgwin.dll` mavjud bo'lsa avtomatik native backend'ni tanlaydi (`backend="gl"` bilan OpenGL'ni majburlash mumkin).
-Shisha Windows kompozitori ichida alohida shaffof oynada chiziladi, orqa fon DXGI Desktop Duplication orqali GPU'da olinadi (~0.05 ms/kadr, ekran
-o'zgarmasa 0 kadr/s). Oyna ekran suratidan yashirilmaydi. Yorug'lik manbai displayda qo'zg'almas (`fixed_light`), sichqonchaga bog'liq emas.
+On Windows `attach(window)` picks the native backend automatically when `win-native/lgwin.dll` exists (force OpenGL with `backend="gl"`).
+The glass is drawn in a separate transparent window inside the Windows compositor, and the backdrop is captured on the GPU
+(about 0.05 ms per frame, 0 frames/s when the screen does not change). The window is not hidden from screen capture. The light source is
+fixed on the display (`fixed_light`) and does not follow the mouse.
 
 ```python
 from liquidglass_win import NativeController, make_popup
-make_popup(dlg, under=True)                       # sarlavhasiz popup, o'zimizning sarlavha va yopish tugmasi
-ctl = NativeController(dlg, rules=[Glass(QPushButton)], under=True, popup=True)   # frost=9 (Gauss, markaz), edge=0 (qirra)
+make_popup(dlg, under=True)                       # a frameless popup with our own title and close button
+ctl = NativeController(dlg, rules=[Glass(QPushButton)], under=True, popup=True)   # frost=9 (Gaussian, centre), edge=0 (rim)
 ```
 
-Popup/dialoglar `attach(..., popups=True)` bilan avtomatik shisha oladi. `popup_demo.py` — erkin siljitiladigan namuna, `glass_tuner.py` — shisha
-xossalarini slayderlar bilan jonli sozlash (qiymatlar JSON bo'lib `out/glass_tuning.json` ga yoziladi). Standart qiymatlar `liquidglass_win.py` boshida.
+Popups and dialogs get glass automatically with `attach(..., popups=True)`. `popup_demo.py` is a freely movable sample;
+`glass_tuner.py` tunes the glass properties live with sliders (values are written as JSON to `out/glass_tuning.json`).
+Defaults are at the top of `liquidglass_win.py`.

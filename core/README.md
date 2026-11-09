@@ -1,52 +1,52 @@
 # liquidglass (core)
 
-Fizikaga asoslangan "suyuq shisha" kutubxonasining yadrosi. Grafika API'ga bog'liq emas.
+The core of the physically based "liquid glass" library. It does not depend on any graphics API.
 
-- `include/liquidglass/` — `Scene` (shakllar, prujina, fokus/qatlam, uniform paketlash), SDF yordamchilari
-- `shaders/liquidglass.frag` — yagona shader manbasi (GLSL ES 3.0): sinish, dispersiya, Fresnel, to'liq ichki qaytish, yutilish, soya/kaustika
-- `tests/` — yadro testlari (prujina, fokus, qo'shilish, kadr tezligidan mustaqillik)
+- `include/liquidglass/`: `Scene` (shapes, spring, focus/layers, uniform packing) and SDF helpers
+- `shaders/liquidglass.frag`: the single shader source (GLSL ES 3.0): refraction, dispersion, Fresnel, total internal reflection, absorption, shadow/caustic
+- `tests/`: core tests (spring, focus, merging, independence from the frame rate)
 
-## Ikki o'tishli chizish
+## Two-pass rendering
 
-1. **Orqa o'tish:** sahna teksturasi + orqadagi shakllar -> FBO (`PassUniforms` = `Scene::pack(Pass::Back)`, `uFlip=0`)
-2. **Oldingi o'tish:** FBO + oldingi shakllar ekranga (`Pass::Front`, `uFlip=1`). Oldingi shisha orqadagini sindiradi.
+1. **Back pass:** the scene texture plus the shapes behind -> FBO (`PassUniforms` = `Scene::pack(Pass::Back)`, `uFlip=0`)
+2. **Front pass:** the FBO plus the front shapes -> screen (`Pass::Front`, `uFlip=1`). The front glass refracts the one behind it.
 
-Backend har kadrda: `scene.step(dt)` -> `true` bo'lsa chiz, `false` bo'lsa kadrni to'xtat.
+Every frame the backend calls `scene.step(dt)`: if it returns `true`, draw; if `false`, skip the frame.
 
-## Yig'ish
+## Build
 
     cmake -S . -B build -G "Visual Studio 17 2022" -A x64
     cmake --build build --config Release
-    build\Release\test_scene.exe
+    ctest --test-dir build -C Release
 
-Namuna (vizual): `..\qbit-liquid-glass\liquid-glass-webgl\proto2.html`
+(On Linux and macOS: `cmake -S . -B build && cmake --build build && ctest --test-dir build`.)
 
 ## Native backend (OpenGL 3.3 + GLFW + Dear ImGui)
 
-`native/` ichida veb bilan bir xil shader va `lg::Scene` yadro ustida ishlaydigan OpenGL chizuvchi (`GlRenderer`) va namuna dastur.
-Birinchi yig'ishda GLFW va ImGui GitHub'dan avtomatik yuklanadi (internet kerak).
+`native/` holds an OpenGL renderer (`GlRenderer`) that runs the same shader as the web version on top of the `lg::Scene` core, and a sample app.
+On the first build GLFW and ImGui are downloaded from GitHub automatically (internet required).
 
     cmake -S . -B build-native -G "Visual Studio 17 2022" -A x64 -DLG_BUILD_NATIVE=ON
     cmake --build build-native --config Release --target native_demo
-    build-native\native\Release\native_demo.exe              # interaktiv: shakllarni sudrang, panelda sozlang
-    build-native\native\Release\native_demo.exe --shot a.png # oynasiz skrinshot (skriptlangan sudrash)
+    build-native\native\Release\native_demo.exe              # interactive: drag shapes, tune in the panel
+    build-native\native\Release\native_demo.exe --shot a.png # windowless screenshot (scripted drag)
 
 ![native](native/docs/native.png)
 
-Chizuvchini o'z ilovangizga ulash: `lg::gl::load()` (GLFW kontekstidan keyin), `GlRenderer::init(fragPath)`, `resize()`, `setSource(rgba, w, h)`,
-har kadrda `scene.step(dt)` va `renderer.render(scene, dpr, light)`.
-Cheklov: sahna (sindiriladigan rasm) siz tomondan RGBA piksel sifatida beriladi; OpenGL 3.3 core kerak.
+To use the renderer in your own app: `lg::gl::load()` (after the GLFW context exists), `GlRenderer::init(fragPath)`, `resize()`,
+`setSource(rgba, w, h)`, and every frame `scene.step(dt)` and `renderer.render(scene, dpr, light)`.
+Limitation: the scene (the image that gets refracted) is supplied by you as RGBA pixels; OpenGL 3.3 core is required.
 
 ## Qt 6 backend (QOpenGLWidget)
 
-`qt/` ichida `GlassWidget` (QOpenGLWidget): bir xil `GlRenderer`, shader va `lg::Scene` yadro. Namuna dastur Qt slayderlari paneli bilan.
+`qt/` holds `GlassWidget` (a QOpenGLWidget): the same `GlRenderer`, shader and `lg::Scene` core. The sample app has a panel of Qt sliders.
 
     cmake -S . -B build-qt -G Ninja -DLG_BUILD_QT=ON -DCMAKE_PREFIX_PATH=<Qt>/6.x/<kit>
     cmake --build build-qt
-    build-qt\qt\qt_demo.exe              # interaktiv
-    build-qt\qt\qt_demo.exe --shot a.png # oynasiz skrinshot (skriptlangan sudrash)
+    build-qt\qt\qt_demo.exe              # interactive
+    build-qt\qt\qt_demo.exe --shot a.png # windowless screenshot (scripted drag)
 
 ![qt](qt/docs/qt.png)
 
-O'z Qt ilovangizga ulash: `GlassWidget` yarating, `scene()` orqali shakllar qo'shing (`add`, `setTint`), `setSource(QImage)` bilan sindiriladigan sahnani bering.
-Sinalgan kit: Qt 6.11 MinGW 13.1 (Windows). OpenGL 3.3 core talab qilinadi.
+To use it in your own Qt app: create a `GlassWidget`, add shapes through `scene()` (`add`, `setTint`), and give it the scene to refract with `setSource(QImage)`.
+Tested kit: Qt 6.11 MinGW 13.1 (Windows). OpenGL 3.3 core is required.

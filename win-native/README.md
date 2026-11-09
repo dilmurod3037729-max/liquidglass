@@ -1,66 +1,70 @@
-# lgwin: Windows uchun native suyuq shisha (GPU)
+# lgwin: native liquid glass for Windows (GPU)
 
-Istalgan oynaning (HWND) ustiga yoki ostiga jonli suyuq shisha qatlami qo'yadi: orqadagi hamma narsa (boshqa oynalar, ish stoli, video)
-shisha qirrasida sinadi, 60 fps. Til va oyna kutubxonasidan qat'i nazar: Win32, Qt, WPF, WinForms, Electron, Delphi, Rust.
+Puts a live liquid glass layer over or under any window (HWND): everything behind it (other windows, the desktop, video) bends at the
+glass edge, at 60 fps. It works with any language or window toolkit: Win32, Qt, WPF, WinForms, Electron, Delphi, Rust.
 
-- Orqa fon: DXGI Desktop Duplication, GPU teksturasi sifatida (CPU'ga tushmaydi, ekran o'zgarmasa kadr kelmaydi).
-- Shisha: D3D11 pixel shader (`../core/shaders/liquidglass.frag` ning HLSL porti, `hlsl.inc`). Bir kadr ~0.05 ms (RTX 2080 SUPER).
-- Chiqish: DirectComposition shaffof oyna, sichqoncha va klaviatura ostidagi ilovaga o'tadi.
-- Talab: Windows 10 2004+ / Windows 11, Direct3D 11 GPU. Ko'p monitor bor, ammo bitta GPU.
+- Backdrop: captured as a GPU texture (it never goes to the CPU; no frame arrives when the screen does not change). The `lg_set_backend`
+  call selects between per-window Windows Graphics Capture and full-screen DXGI Desktop Duplication.
+- Glass: a D3D11 pixel shader (an HLSL port of `../core/shaders/liquidglass.frag`, in `hlsl.inc`). One frame takes about 0.05 ms (RTX 2080 SUPER).
+- Output: a transparent DirectComposition window; mouse and keyboard pass through to the application underneath.
+- Requirements: Windows 11 (tested) or Windows 10 (untested), a Direct3D 11 GPU. Several monitors work, but only on one GPU.
 
-## 10 daqiqada ulash
+## Up and running in 10 minutes
 
 ### C++
 ```cpp
-#include "lgwin.h"                       // include/ ; lgwin.lib bilan bog'lang, lgwin.dll yoningizda
-void* glass = lg_create2(hwnd, 0);       // 0: shisha oyna ustida
+#include "lgwin.h"                       // include/ ; link with lgwin.lib, keep lgwin.dll next to your exe
+void* glass = lg_create2(hwnd, 0);       // 0: glass over the window
 LGShape s[] = { lgRect(40, 40, 360, 220, 16, dpr), lgRect(60, 300, 130, 44, 14, dpr) };
-s[0].bevel = -0.45f; s[0].thick = 0.3f;  // karta: qirrasi shisha, markazi tiniq
+s[0].bevel = -0.45f; s[0].thick = 0.3f;  // card: glass rim, clear centre
 lgSet(glass, lgDefaultParams(dpr), s, 2);
-// ... oyna yopilganda: lg_destroy(glass);
+// ... when the window closes: lg_destroy(glass);
 ```
-To'liq namuna: `samples/cpp/sample.cpp` (`build_sample.bat`).
+Full sample: `samples/cpp/sample.cpp` (`build_sample.bat`).
 
 ### C# (WinForms / WPF)
 ```csharp
 var glass = new GlassLayer(form.Handle) { Dpr = form.DeviceDpi / 96f };      // WPF: new WindowInteropHelper(win).Handle
 glass.SetShapes(new[] { Shape.FromRect(40, 40, 360, 220, 16, glass.Dpr, bevel: -0.45f, thick: 0.3f) });
 ```
-`dotnet/LiquidGlass.cs` ni loyihaga qo'shing. To'liq namuna: `samples/csharp` (`dotnet build`).
+Add `dotnet/LiquidGlass.cs` to your project. Full sample: `samples/csharp` (`dotnet build`).
 
 ### Python / Qt
-`python/liquidglass_qt.py`: `attach(window)` tugma, karta va jadvallarni o'zi topib shisha qiladi.
+`python/liquidglass_qt.py`: `attach(window)` finds buttons, cards and tables and turns them into glass.
 
-## Rejimlar
+## Modes
 
-`lg_create3(hwnd, under, visible)` (`lg_create2` va `lg_create` `visible = 0` bilan ochadi):
+`lg_create3(hwnd, under, visible)` (`lg_create2` and `lg_create` open with `visible = 0`):
 
-| | `visible = 1` (Python standart) | `visible = 0` |
+| | `visible = 1` (Python default) | `visible = 0` |
 |---|---|---|
-| Oyna ekran suratiga / yozuvga | **tushadi** (Windows'ning o'z oynalari kabi, hech narsa yashirilmaydi) | tushmaydi (`WDA_EXCLUDEFROMCAPTURE`) |
-| Shisha ko'rinishi | markazi shaffof (tagi jonli), sinadigan qirra; `under = 1` da markaz Gauss xira (frost) ham bo'ladi | to'liq shisha |
-| Orqa fon | shisha qirrasi egallagan joy nusxada yangilanmaydi (o'zini suratga olib buzmaslik uchun) | butun orqa fon jonli |
+| The window in screenshots and recordings | **appears** (like any Windows window, nothing is hidden) | does not appear (`WDA_EXCLUDEFROMCAPTURE`) |
+| Glass look | transparent centre (live content below), refracting rim; with `under = 1` the centre also gets a Gaussian frost | full glass |
+| Backdrop | the area covered by the glass rim is not updated in the copy (so the glass never captures itself) | the whole backdrop is live |
 
-- `under = 0`: shisha oyna USTIDA. `under = 1`: shisha oyna OSTIDA, Qt/Win32 oynasi deyarli ko'rinmas (2% shaffoflik) kirish vositasi bo'lib, matn va tugmalar
-  `lg_set_content` orqali shisha oynasida chiziladi.
-- Oyna ichidagi ichma-ich shakllarda kichigi ustun. `bevel < 0` = «tiniq ichki», `thick < 0` = «ramka».
-- Qt'ning per-pixel shaffof oynasi (`WA_TranslucentBackground`) Desktop Duplication'da qora chiqadi: `setWindowOpacity` ishlating.
-- Ekran o'zgarmasa DLL kadr chizmaydi (0 kadr/s), o'zining chizgani "aks-sado" deb sanaladi va qayta chizilmaydi.
+- `under = 0`: the glass is OVER the window. `under = 1`: the glass is UNDER the window, and the Qt/Win32 window is almost invisible
+  (2 % opacity) and serves only as the input surface; text and buttons are drawn in the glass window through `lg_set_content`.
+- For nested shapes inside a window the smaller one wins. `bevel < 0` = "clear inside", `thick < 0` = "frame".
+- A Qt per-pixel transparent window (`WA_TranslucentBackground`) comes out black in Desktop Duplication: use `setWindowOpacity`.
+- When the screen does not change the DLL draws no frames (0 frames/s); its own output is counted as an "echo" and is not redrawn.
 
 ## API
 
-`include/lgwin.h`: `lg_create3`, `lg_create2`, `lg_create`, `lg_destroy`, `lg_set`, `lg_light`, `lg_dump`, `lg_info`, `lg_error`.
-Qo'shimcha (Python tomoni ishlatadi): `lg_set_content`, `lg_set_hold`, `lg_set_frost`, `lg_set_edge`, `lg_luma`, `lg_kill_chrome`, `lg_capture_visible`, `lg_dump2`.
-Shakllar koordinatalari oynaning ichki maydoni boshidan, HAQIQIY piksellarda (mantiqiy piksel × DPI). Eng ko'pi 256 shakl.
+`include/lgwin.h`: `lg_create3`, `lg_create2`, `lg_create`, `lg_destroy`, `lg_set`, `lg_light`, `lg_dump`, `lg_info`, `lg_error`,
+`lg_set_content_rect`, `lg_beat`.
+Additional calls (used by the Python side, declared in the Python bindings): `lg_set_content`, `lg_set_hold`, `lg_set_frost`,
+`lg_set_edge`, `lg_luma`, `lg_kill_chrome`, `lg_capture_visible`, `lg_dump2`.
+Shape coordinates are measured from the start of the window's client area, in REAL pixels (logical pixels x DPI). At most 256 shapes.
 
-## Yig'ish
+## Build
 
-`build_dll.bat` (MSVC 2022): `lgwin.dll` va `lgwin.lib` hosil bo'ladi.
+`build_dll.bat` (Visual Studio 2019 or 2022 with the C++ workload and a Windows SDK): produces `lgwin.dll` and `lgwin.lib`.
 
-## Cheklovlar va bilib qo'yish kerak
+## Limitations and things to know
 
-- Ko'rinadigan oyna tagidagi JONLI tasvirni faqat `visible = 0` ko'ra oladi. `visible = 1` da shisha qirrasi tagi eski nusxada qoladi.
-- Popup ichki qismi (`under = 1`, `hold`) orqa fonning muzlatilgan nusxasini ishlatadi.
-- Bir jarayonda bitta monitorni bir marta takrorlash mumkin: kutubxona buni ichkarida bo'lishadi (bitta render oqimi, har oynaga bitta swapchain).
-- Boshqa GPU'dagi monitor (hybrid noutbuk) hozircha qo'llab-quvvatlanmaydi (`lg_error` stage 9).
-- Asosiy sampler `MaxLOD = 0`: `blur`/`lod` parametrlari refraksiyada deyarli ta'sir qilmaydi (standart qiymatlar shunga moslab tanlangan). Orqa fon yorqinligi uchun alohida to'g'ri sampler ishlatiladi.
+- Only `visible = 0` can see the LIVE image under a visible window. With `visible = 1` the area under the glass rim keeps an older copy.
+- The inside of a popup (`under = 1`, `hold`) uses a frozen copy of the backdrop.
+- One process can duplicate one monitor once: the library shares it internally (one render thread, one swap chain per window).
+- A monitor on a different GPU (hybrid laptops) is not supported yet (`lg_error` stage 9).
+- The main sampler has `MaxLOD = 0`: the `blur` and `lod` parameters have almost no effect on refraction (the defaults were chosen with
+  that in mind). A separate correct sampler is used for backdrop brightness.
