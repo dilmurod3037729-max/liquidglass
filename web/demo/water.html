@@ -41,15 +41,15 @@ try {
   draw(); addEventListener('resize', draw);
 
   const label = (html) => { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = html; document.body.appendChild(el); return el; };
-  water.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Card<small>drag me</small>'));
-  water.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Kapsula'));
+  water.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Drag me'));
+  water.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Capsule'));
   water.add({ w: 64, h: 64, radius: 32 }, { x: W * 0.82, y: H * 0.62 }, label('+'));
-  water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 - 100, y: by }, label('Tayyor'));
-  water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 + 100, y: by }, label('Bekor'));
+  water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 - 100, y: by }, label('Done'));
+  water.add({ w: 150, h: 52, radius: 26, draggable: false, anchored: true }, { x: W / 2 + 100, y: by }, label('Cancel'));
 
   // Panel: settings are built from the schema
   const panel = document.getElementById('panel');
-  panel.innerHTML = '<h2>Suv xususiyatlari</h2><div id="presets"></div><h3>Suyuqlik</h3><div id="fl"></div><h3>Shisha</h3><div id="gl"></div>';
+  panel.innerHTML = '<h2>Water properties</h2><div id="presets"></div><h3>Fluid</h3><div id="fl"></div><h3>Glass</h3><div id="gl"></div>';
   const sliders = [];
   const addSlider = (host, key, spec, get, set) => {
     const l = document.createElement('label');
@@ -60,21 +60,21 @@ try {
     host.appendChild(l); sliders.push(sync); sync();
   };
   for (const [k, s] of Object.entries(PARAM_SCHEMA)) addSlider(panel.querySelector('#fl'), k, s, () => water.fluid.params[k], (v) => water.fluid.set({ [k]: v }));
-  const glassSchema = { ior: [1.1, 2, 0.01, 'Sinish ko\'rsatkichi'], thick: [0, 160, 1, 'Qalinlik'], bevel: [8, 90, 1, 'Chet kengligi'], disp: [0, 0.15, 0.002, 'Dispersiya'], blur: [0, 4, 0.05, 'Blur'], spec: [0, 2, 0.05, 'Yaltirash'], absorb: [0, 2, 0.05, 'Yutilish'] };
+  const glassSchema = { ior: [1.1, 2, 0.01, 'Index of refraction'], thick: [0, 160, 1, 'Thickness'], bevel: [8, 90, 1, 'Rim width'], disp: [0, 0.15, 0.002, 'Dispersion'], blur: [0, 4, 0.05, 'Blur'], spec: [0, 2, 0.05, 'Specular'], absorb: [0, 2, 0.05, 'Absorption'] };
   for (const [k, [min, max, step, label]] of Object.entries(glassSchema)) addSlider(panel.querySelector('#gl'), k, { min, max, step, label }, () => water.glass[k], (v) => { water.glass[k] = v; });
 
   const pbox = panel.querySelector('#presets');
   Object.keys(PRESETS).forEach((name) => {
-    const b = document.createElement('button'); b.textContent = { water: 'Suv', honey: 'Asal', mercury: 'Simob' }[name] || name;
+    const b = document.createElement('button'); b.textContent = { water: 'Water', honey: 'Honey', mercury: 'Mercury' }[name] || name;
     b.addEventListener('click', () => { water.fluid.preset(name); sliders.forEach(f => f()); pbox.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); water.wake(); });
     pbox.appendChild(b);
   });
   pbox.firstChild.classList.add('on');
 
   const stat = document.getElementById('stat');
-  setInterval(() => { stat.textContent = `zarracha: ${water.fluid.n} · kadr: ${water.drawn} · ${water.idle >= 3 ? 'bo\'sh' : 'faol'}`; }, 400);
+  setInterval(() => { stat.textContent = `particles: ${water.fluid.n} · frames: ${water.drawn} · ${water.idle >= 3 ? 'idle' : 'active'}`; }, 400);
   window.__water = water;
-  document.title += ' [tayyor]';
+  document.title += ' [ready]';
 } catch (e) { document.getElementById('err').textContent = String(e.message || e); }
 </script>
 </body>

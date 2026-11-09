@@ -22,7 +22,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">Drag the shapes and bring them close to each other or to the buttons below. The one you press comes to the front.</div>
+<div id="hint">Drag the shapes close to each other or to the buttons below.</div>
 <div id="panel"></div>
 <div id="stat"></div>
 <div id="err"></div>
@@ -39,14 +39,14 @@ try {
   addEventListener('resize', draw);
 
   const label = (html) => { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = html; document.body.appendChild(el); return el; };
-  glass.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Card<small>drag me</small>'));
-  glass.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Kapsula'));
+  glass.add({ w: 280, h: 170, radius: 40 }, { x: W * 0.3, y: H * 0.4 }, label('Drag me'));
+  glass.add({ w: 220, h: 58, radius: 29 }, { x: W * 0.62, y: H * 0.3 }, label('Capsule'));
   glass.add({ w: 64, h: 64, radius: 32 }, { x: W * 0.82, y: H * 0.62 }, label('+'));
-  glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 - 100, y: by }, label('Tayyor'));
-  glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 + 100, y: by }, label('Bekor'));
+  glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 - 100, y: by }, label('Done'));
+  glass.add({ w: 150, h: 52, radius: 26, draggable: false }, { x: W / 2 + 100, y: by }, label('Cancel'));
 
   const stat = document.getElementById('stat');
-  setInterval(() => { stat.textContent = `chizilgan kadr: ${glass.drawn} · ${glass.idle >= 3 ? 'bo\'sh (GPU ishlamayapti)' : 'faol'}`; }, 400);
+  setInterval(() => { stat.textContent = `frames drawn: ${glass.drawn} · ${glass.idle >= 3 ? 'idle (GPU not working)' : 'active'}`; }, 400);
   // Settings panel: built automatically from GLASS_SCHEMA
   const panel = document.getElementById('panel');
   panel.innerHTML = '<h2>Glass settings</h2>';
@@ -59,11 +59,11 @@ try {
     inp.addEventListener('input', () => { glass.params[k] = parseFloat(inp.value); sync(); glass.wake(); });
     panel.appendChild(l); syncs.push(sync); sync();
   }
-  const reset = document.createElement('button'); reset.textContent = 'Boshlang\'ich';
+  const reset = document.createElement('button'); reset.textContent = 'Reset';
   reset.addEventListener('click', () => { Object.assign(glass.params, defaultParams(), { elastic: 0 }); syncs.forEach(f => f()); glass.wake(); });
   panel.appendChild(reset);
   window.__glass = glass;
-  document.title += ' [tayyor]';
+  document.title += ' [ready]';
 } catch (e) { document.getElementById('err').textContent = String(e.message || e); }
 </script>
 </body>
