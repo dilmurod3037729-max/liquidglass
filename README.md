@@ -41,13 +41,6 @@ A proof that the backend is usable for real work: a small terminal (PySide6, Con
 is drawn by the app and sits on top of the glass; its colour adapts to what is behind it, and the glass refracts whatever lies under it,
 including other glass windows. The terminal's source is not part of this repository yet.
 
-30 seconds on a real Windows 11 desktop (no synthetic background): the glass terminal is moved over desktop icons, the Settings
-Wi-Fi page, the quick-settings Wi-Fi flyout and across the monitor edge while `cmatrix`, `cacafire`, `nyancat`, `cbonsai` and `btop`
-run inside it. The Wi-Fi flyout is drawn by Windows above the terminal, so the glass sits under it. Name and e-mail in Settings are blurred.
-
-![GlassTerm on a real desktop, 30 s](docs/native/terminal_desktop_30s.gif)
-
-[Full quality MP4 (1920x1080)](docs/native/terminal_desktop_30s.mp4)
 
 Try it (needs Visual Studio 2022 with the C++ workload and the Windows SDK; paths in `win-native/build_dll.bat` are for
 the author's machine, adjust them):
