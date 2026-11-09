@@ -86,6 +86,8 @@ struct Ov {
     float params[16] = { 1.55f, 40.f, 26.f, 0.04f, 0.35f, 1.1f, 0.2f, 1.f, 0.45f, 26.f, 0.7f, 1.f, 0, 0, 0, 0 };
     float lightX = 0, lightY = 0;
     std::vector<uint8_t> pendingContent; int pcW = 0, pcH = 0, pcStride = 0; bool contentNew = false;   // kontent: API oqimi yozadi, render oqimi yuklaydi
+    double lastBackMs = 0;
+    bool contentFull = true; RECT contentBox{};   // qisman yangilanish (lg_set_content_rect): faqat shu to'rtburchak GPU'ga yuklanadi
     std::atomic<bool> dirty{true}, stop{false}, done{false};
     std::wstring dumpPath; std::atomic<int> dumpDone{0}, dumpReq{0}; int dumpWhich = 0;   // 0 = oxirgi kadr, 1 = back (mip0), 2 = frost xira nusxa
     std::atomic<long> frames{0}, updates{0}; std::atomic<int> lastUs{0}; std::atomic<int> errStage{0}; std::atomic<long> errHr{0};
@@ -113,6 +115,7 @@ static std::mutex gMu;
 static int gSelfPresents = 0;   // o'zimiz Present qilgan, lekin hali Desktop Duplication'da "aks-sado" sifatida qaytmagan kadrlar soni
 static std::vector<Ov*> gPending, gActive;
 static std::thread gThread; static std::atomic<bool> gRun{false};
+static std::atomic<unsigned long long> gBeat{0};   // render oqimi tirikligi: ilova watchdog'i o'qiydi
 
 // Windows 11 har bir yuqori darajadagi oynaga ingichka ramka, soya va yumaloq burchak chizadi: shisha o'zining shaklini o'zi chizadi, shuning uchun hammasini o'chiramiz
 static void killChrome(HWND h) {
@@ -468,8 +471,16 @@ static void uploadConstants(Shared& S, Ov* o, bool debug) {
                 cd.SampleDesc.Count = 1; cd.Usage = D3D11_USAGE_DEFAULT; cd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
                 if (SUCCEEDED(S.dev->CreateTexture2D(&cd, nullptr, &o->content))) S.dev->CreateShaderResourceView(o->content.Get(), nullptr, &o->contentSrv);
             }
-            if (o->content) { S.ctx->UpdateSubresource(o->content.Get(), 0, nullptr, o->pendingContent.data(), o->pcStride, 0); o->hasContent = true; }
-            o->contentNew = false;
+            if (o->content) {
+                if (o->contentFull || !o->hasContent) S.ctx->UpdateSubresource(o->content.Get(), 0, nullptr, o->pendingContent.data(), o->pcStride, 0);
+                else {
+                    const RECT& r = o->contentBox;
+                    D3D11_BOX box{ (UINT)r.left, (UINT)r.top, 0, (UINT)r.right, (UINT)r.bottom, 1 };
+                    S.ctx->UpdateSubresource(o->content.Get(), 0, &box, o->pendingContent.data() + (size_t)r.top * o->pcStride + (size_t)r.left * 4, o->pcStride, 0);
+                }
+                o->hasContent = true;
+            }
+            o->contentNew = false; o->contentFull = false;
         }
     }
     cb.hasContent = o->hasContent ? (o->chameleon >= 2 ? 3.f : (o->chameleon ? 2.f : 1.f)) : 0.f; cb.rimOnly = o->visible ? 1.f : 0.f; cb.frost = (o->frostSigma > 0 && o->blurB) ? 1.f : 0.f; cb.edge = (o->edgeSigma > 0 && o->blurD) ? 1.f : 0.f;
@@ -684,6 +695,7 @@ static void worker() {
     HWINEVENTHOOK zh2 = SetWinEventHook(EVENT_OBJECT_REORDER, EVENT_OBJECT_REORDER, nullptr, zHook, 0, 0, WINEVENT_OUTOFCONTEXT);
     HHOOK hook = std::getenv("LG_NO_HOOK") ? nullptr : SetWindowsHookExW(WH_KEYBOARD_LL, kbHook, GetModuleHandleW(nullptr), 0);
     while (gRun) {
+        gBeat++;
         MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
         {
             bool wantVisible = GetTickCount64() < gCaptureUntil;
@@ -723,6 +735,7 @@ static void worker() {
                 if (!o->wgc) SetWindowPos(o->hwnd, nullptr, org.x, org.y, W, H, SWP_NOACTIVATE | SWP_NOZORDER);
                 HRESULT hr = S_OK; int st = setupOverlay(S, o, org, W, H, hr);
                 if (st) { o->errStage = st; o->errHr = (long)hr; releaseOverlayGpu(o); continue; }
+                o->errStage = 0;   // qayta urinish muvaffaqiyatli: vaqtinchalik xato (RDP, qulf) doimiy deb qolmasin
                 o->last = { -99999, -99999 };
                 ShowWindow(o->hwnd, SW_SHOWNOACTIVATE);
             }
@@ -737,6 +750,10 @@ static void worker() {
                 lgTrace(okp ? "present" : "skip", org.x, org.y, o->lastUs / 1000.0);
                 if (!o->wgc) SetWindowPos(o->hwnd, nullptr, org.x, org.y, W, H, SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW);   // WGC: oyna qo'zg'almas, o'rin swapchain ichida
                 lgTrace("moved", org.x, org.y, 0);
+            }
+            if (o->under) {   // target "doim ustida" bo'lsa shisha ham shunday bo'lishi kerak: aks holda orasiga oddiy oynalar tushadi
+                bool tt = (GetWindowLongW(o->target, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0, ot = (GetWindowLongW(o->hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+                if (tt != ot) SetWindowPos(o->hwnd, tt ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
             if (o->under) {   // shisha target'ning ostida (ikki-uch oyna oralig'i bo'lishi mumkin); Z-tartibni kamdan-kam va kechikish bilan tuzatamiz
                 bool below = false; HWND w = o->target;
@@ -850,7 +867,13 @@ static void worker() {
             if (!o->inited) continue;
             bool freshHere = false;
             if (!o->wgc) for (auto& od : S.outs) if (od.fresh && rectHit(od.rc, o->last.x - PAD, o->last.y - PAD, o->last.x + o->W + PAD, o->last.y + o->H + PAD)) freshHere = true;
-            if (freshHere || o->needBack) backAndPresent(S, o);
+            bool due = true;
+            if (o->wgc && !freshHere && o->needBack) {   // orqa fon sababli yangilanish: N ta to'liq ish stoli overlay GPU'ni to'ldirmasin (6 oyna + 60 Hz fon = 92 % o'lchangan)
+                double nowMs = qpcMs(), minMs = GetForegroundWindow() == o->target ? 14.0 : std::min(14.0 * alive.size(), 100.0);
+                due = nowMs - o->lastBackMs >= minMs;
+                if (due) o->lastBackMs = nowMs;
+            }
+            if (freshHere || (o->needBack && due)) backAndPresent(S, o);
             else if (backReady(S, o) && o->dirty.exchange(false)) {
                 lgTrace("render", 0, 0, 0);
                 LARGE_INTEGER t0, t1, fq; QueryPerformanceFrequency(&fq); QueryPerformanceCounter(&t0);
@@ -866,7 +889,7 @@ static void worker() {
             }
         }
         for (size_t i = 0; i < S.outs.size(); i++) if (S.outs[i].dupl && S.outs[i].frame) { S.outs[i].frame.Reset(); S.outs[i].dupl->ReleaseFrame(); }
-        if (!waited) WaitForSingleObject(gWake, GetTickCount64() - gLastMove < 400 ? 1 : 4);   // ekran kadri kutilmadi (WGC rejimi): oyna kadri kelguncha yoki 8 ms uxlaymiz
+        if (!waited) WaitForSingleObject(gWake, GetTickCount64() - gLastMove < 400 ? 1 : 8);   // ekran kadri kutilmadi (WGC rejimi): oyna kadri kelguncha yoki 8 ms uxlaymiz
     }
     if (zh1) UnhookWinEvent(zh1); if (zh2) UnhookWinEvent(zh2);
     if (hook) UnhookWindowsHookEx(hook);
@@ -927,7 +950,21 @@ __declspec(dllexport) void lg_set_content(void* h, const uint8_t* bgra, int w, i
     std::lock_guard<std::mutex> lk(o->mu);
     if (!bgra || w <= 0) { o->hasContent = false; o->pendingContent.clear(); o->contentNew = false; o->dirty = true; return; }
     o->pendingContent.assign(bgra, bgra + (size_t)stride * hgt);
+    o->contentFull = true;
     o->pcW = w; o->pcH = hgt; o->pcStride = stride; o->contentNew = true; o->dirty = true;
+}
+// Kontentning bir qismi (x,y,w,h haqiqiy pikselda; bgra shu to'rtburchakning birinchi pikseli). Avval lg_set_content bilan
+// to'liq kontent berilgan bo'lishi kerak; aks holda 0 qaytadi va chaqiruvchi to'liq yuklashi kerak. Kursor miltillashi butun oynani qayta yuklamasin.
+__declspec(dllexport) int lg_set_content_rect(void* h, const uint8_t* bgra, int x, int y, int w, int hgt, int stride) {
+    Ov* o = (Ov*)h; if (!o || !bgra) return 0;
+    std::lock_guard<std::mutex> lk(o->mu);
+    if (o->pendingContent.empty() || x < 0 || y < 0 || w <= 0 || hgt <= 0 || x + w > o->pcW || y + hgt > o->pcH) return 0;
+    for (int r = 0; r < hgt; r++) memcpy(o->pendingContent.data() + (size_t)(y + r) * o->pcStride + (size_t)x * 4, bgra + (size_t)r * stride, (size_t)w * 4);
+    RECT nb{ x, y, x + w, y + hgt };
+    if (o->contentNew && !o->contentFull) UnionRect(&o->contentBox, &o->contentBox, &nb);
+    else if (!o->contentNew) o->contentBox = nb;
+    o->contentNew = true; o->dirty = true;
+    return 1;
 }
 // Popup ichki qismini Gauss bilan xiralashtirish (sigma: haqiqiy piksel; 0 = o'chiq)
 __declspec(dllexport) void lg_set_frost(void* h, float sigma) { Ov* o = (Ov*)h; if (o) { o->frostSigma = sigma; o->needBack = true; } }
@@ -965,6 +1002,7 @@ __declspec(dllexport) int lg_dump(void* h, const wchar_t* path) {
     int ok = o->dumpDone; o->dumpReq = 0; o->dumpPath.clear(); return ok;
 }
 __declspec(dllexport) void lg_error(void* h, int* stage, long* hr) { Ov* o = (Ov*)h; if (!o) return; *stage = o->errStage; *hr = o->errHr; }
+__declspec(dllexport) unsigned long long lg_beat() { return gBeat.load(); }
 __declspec(dllexport) void lg_info(void* h, long* frames, long* updates, int* lastUs) {
     Ov* o = (Ov*)h; if (!o) return;
     *frames = o->frames; *updates = o->updates; *lastUs = o->lastUs;

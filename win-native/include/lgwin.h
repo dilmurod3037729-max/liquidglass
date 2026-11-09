@@ -2,6 +2,7 @@
 // Ulash: lgwin.lib bilan bog'lang, ishga tushirishda lgwin.dll yoningizda turishi kerak.
 #pragma once
 #include <windows.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,6 +58,8 @@ LGWIN_API void  lg_light(void* h, float x, float y);   // yorug'lik yo'nalishi, 
 LGWIN_API int   lg_dump(void* h, const wchar_t* bmpPath);                 // shisha qatlamini .bmp qilib yozadi (ekran surati uni ko'rsatmaydi)
 LGWIN_API void  lg_info(void* h, long* frames, long* updates, int* lastFrameMicroseconds);
 LGWIN_API void  lg_error(void* h, int* stage, long* hresult);              // stage 0 = xato yo'q
+LGWIN_API int   lg_set_content_rect(void* h, const uint8_t* bgra, int x, int y, int w, int hgt, int stride);   // kontentning bir qismini yangilaydi (avval lg_set_content kerak); 0 = to'liq yuklang
+LGWIN_API unsigned long long lg_beat();   // render oqimi tirikligi hisoblagichi (watchdog uchun)
 
 #ifdef __cplusplus
 }
