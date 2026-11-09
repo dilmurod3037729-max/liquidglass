@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- CI: web tests, core on Linux, Windows and macOS, Windows DLL build. `build_dll.bat` finds any installed Visual Studio.
+- Release workflow that attaches a prebuilt `lgwin.dll` to a tagged release.
 - Native Windows: `lg_set_content_rect` uploads only the changed rectangle of the content layer (a blinking cursor no longer re-uploads the window).
 - Native Windows: `lg_beat` render-thread heartbeat for host watchdogs.
 

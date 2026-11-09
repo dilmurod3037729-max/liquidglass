@@ -13,6 +13,7 @@ Refraction, dispersion, Fresnel and frost in real time, for the web, Qt and nati
 [Platforms](#platforms) ·
 [Changelog](CHANGELOG.md)
 
+[![CI](https://github.com/dilmurod3037729-max/liquidglass/actions/workflows/ci.yml/badge.svg)](https://github.com/dilmurod3037729-max/liquidglass/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@dilmurod3037729/liquidglass-web?label=npm)](https://www.npmjs.com/package/@dilmurod3037729/liquidglass-web)
 [![license](https://img.shields.io/github/license/dilmurod3037729-max/liquidglass)](LICENSE)
 [![stars](https://img.shields.io/github/stars/dilmurod3037729-max/liquidglass?style=flat)](https://github.com/dilmurod3037729-max/liquidglass/stargazers)

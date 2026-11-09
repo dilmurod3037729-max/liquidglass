@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows-dll:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: win-native\build_dll.bat
+        shell: cmd
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item win-native/lgwin.dll, win-native/lgwin.lib, win-native/include/lgwin.h, win-native/dotnet/LiquidGlass.cs dist/
+          Compress-Archive -Path dist/* -DestinationPath liquidglass-win-x64.zip
+          $hash = (Get-FileHash liquidglass-win-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "SHA256 of liquidglass-win-x64.zip: $hash" | Out-File notes.txt -Encoding utf8
+          "The DLL is not code-signed; Windows SmartScreen may warn. Build from source with win-native/build_dll.bat to avoid that." | Out-File notes.txt -Append -Encoding utf8
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" liquidglass-win-x64.zip --title "${{ github.ref_name }}" --notes-file notes.txt --generate-notes
